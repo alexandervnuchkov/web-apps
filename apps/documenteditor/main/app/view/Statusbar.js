@@ -150,7 +150,8 @@ define([
                 this.btnDocLanguage = new Common.UI.Button({
                     el: $('#btn-doc-lang',this.el),
                     hint: this.tipSetDocLang,
-                    hintAnchor: 'top'
+                    hintAnchor: 'top',
+                    disabled: true
                 });
 
                 this.btnSetSpelling = new Common.UI.Button({
@@ -203,12 +204,12 @@ define([
                 this.btnLanguage = new Common.UI.Button({
                     el: panelLang,
                     hint: this.tipSetLang,
-                    hintAnchor: 'top-left'
+                    hintAnchor: 'top-left',
+                    disabled: true
                 });
                 this.btnLanguage.cmpEl.on({
                     'show.bs.dropdown': function () {
                         _.defer(function(){
-                            me.api.asc_enableKeyEvents(false);
                             me.btnLanguage.cmpEl.find('ul').focus();
                         }, 100);
                     },
@@ -234,7 +235,6 @@ define([
                 });
                 this.cntZoom.cmpEl.on('show.bs.dropdown', function () {
                         _.defer(function(){
-                            me.api.asc_enableKeyEvents(false);
                             me.cntZoom.cmpEl.find('ul').focus();
                         }, 100);
                     }
@@ -314,9 +314,9 @@ define([
                         return me.txtPageNumInvalid;
                     }
                 }).on('keypress:after', function(input, e) {
-                        var box = me.$el.find('#status-goto-box');
                         if (e.keyCode === Common.UI.Keys.RETURN) {
-                            var edit = box.find('input[type=text]'), page = parseInt(edit.val());
+                            var box = me.$el.find('#status-goto-box'),
+                                edit = box.find('input[type=text]'), page = parseInt(edit.val());
                             if (!page || page-- > me.pages.get('count') || page < 0) {
                                 edit.select();
                                 return false;
@@ -328,6 +328,15 @@ define([
                             me.api.goToPage(page);
                             me.api.asc_enableKeyEvents(true);
 
+                            return false;
+                        }
+                    }
+                ).on('keyup:after', function(input, e) {
+                        if (e.keyCode === Common.UI.Keys.ESC) {
+                            var box = me.$el.find('#status-goto-box');
+                            box.focus();                        // for IE
+                            box.parent().removeClass('open');
+                            me.api.asc_enableKeyEvents(true);
                             return false;
                         }
                     }
@@ -380,7 +389,7 @@ define([
             setMode: function(mode) {
                 this.mode = mode;
                 this.$el.find('.el-edit')[mode.isEdit?'show':'hide']();
-                this.$el.find('.el-review')[mode.canReview?'show':'hide']();
+                this.$el.find('.el-review')[(mode.canReview && !mode.isLightVersion)?'show':'hide']();
                 this.lblChangeRights[(!this.mode.isOffline && !this.mode.isReviewOnly && this.mode.sharingSettingsUrl&&this.mode.sharingSettingsUrl.length)?'show':'hide']();
                 this.panelUsers[(!this.mode.isOffline && !this.mode.isReviewOnly && this.mode.sharingSettingsUrl&&this.mode.sharingSettingsUrl.length)?'show':'hide']();
             },
@@ -419,6 +428,7 @@ define([
                     usertip.setContent();
                 }
                 (length > 1) ? this.panelUsersBlock.attr('data-toggle', 'dropdown') : this.panelUsersBlock.removeAttr('data-toggle');
+                this.panelUsersBlock.toggleClass('dropdown-toggle', length > 1);
                 (length > 1) ? this.panelUsersBlock.off('click') : this.panelUsersBlock.on('click', _.bind(this.onUsersClick, this));
             },
 
@@ -466,6 +476,10 @@ define([
                 }, this);
 
                 this.langMenu.doLayout();
+                if (this.langMenu.items.length>0) {
+                    this.btnLanguage.setDisabled(false);
+                    this.btnDocLanguage.setDisabled(false);
+                }
             },
 
             setLanguage: function(info) {
@@ -494,8 +508,9 @@ define([
             },
 
             SetDisabled: function(disable) {
-                this.btnLanguage.setDisabled(disable);
-                this.btnDocLanguage.setDisabled(disable);
+                var langs = this.langMenu.items.length>0;
+                this.btnLanguage.setDisabled(disable || !langs);
+                this.btnDocLanguage.setDisabled(disable || !langs);
                 if (disable) {
                     this.state.changespanel = this.mnuChangesPanel.checked;
                 }
@@ -508,8 +523,8 @@ define([
             tipUsers            : 'Document is currently being edited by several users.',
             tipMoreUsers        : 'and %1 users.',
             tipShowUsers        : 'To see all users click the icon below.',
-            tipFitPage          : 'Fit Page',
-            tipFitWidth         : 'Fit Width',
+            tipFitPage          : 'Fit to Page',
+            tipFitWidth         : 'Fit to Width',
             tipZoomIn           : 'Zoom In',
             tipZoomOut          : 'Zoom Out',
             tipZoomFactor       : 'Magnification',
@@ -585,7 +600,7 @@ define([
                     data: this.options.languages
                 });
 
-                this.cmbLanguage.scroller.update({alwaysVisibleY: true});
+                if (this.cmbLanguage.scroller) this.cmbLanguage.scroller.update({alwaysVisibleY: true});
                 this.cmbLanguage.on('selected', _.bind(this.onLangSelect, this));
                 this.cmbLanguage.setValue(Common.util.LanguageInfo.getLocalLanguageName(this.options.current)[0]);
                 this.onLangSelect(this.cmbLanguage, this.cmbLanguage.getSelectedRecord());

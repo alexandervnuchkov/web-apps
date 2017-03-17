@@ -141,6 +141,13 @@ define([
                 toggleGroup: 'leftMenuGroup'
             });
 
+            this.btnComments.hide();
+            this.btnChat.hide();
+
+            this.btnComments.on('click',        _.bind(this.onBtnMenuClick, this));
+            this.btnChat.on('click',            _.bind(this.onBtnMenuClick, this));
+            /** coauthoring end **/
+
             this.btnPlugins = new Common.UI.Button({
                 el: $('#left-btn-plugins'),
                 hint: this.tipPlugins,
@@ -148,15 +155,8 @@ define([
                 disabled: true,
                 toggleGroup: 'leftMenuGroup'
             });
-
-            this.btnComments.hide();
-            this.btnChat.hide();
             this.btnPlugins.hide();
-
-            this.btnComments.on('click',        _.bind(this.onBtnMenuClick, this));
-            this.btnChat.on('click',            _.bind(this.onBtnMenuClick, this));
             this.btnPlugins.on('click',         _.bind(this.onBtnMenuClick, this));
-            /** coauthoring end **/
 
             this.btnSearch.on('click',          _.bind(this.onBtnMenuClick, this));
             this.btnAbout.on('toggle',          _.bind(this.onBtnMenuToggle, this));
@@ -227,7 +227,7 @@ define([
                 }
             }
             /** coauthoring end **/
-            if (this.mode.canPlugins) {
+            if (this.mode.canPlugins && this.panelPlugins) {
                 if (this.btnPlugins.pressed) {
                     this.panelPlugins.show();
                 } else
@@ -279,12 +279,12 @@ define([
                     this.panelChat['hide']();
                     this.btnChat.toggle(false, true);
                 }
-                if (this.mode.canPlugins) {
-                    this.panelPlugins['hide']();
-                    this.btnPlugins.toggle(false, true);
-                }
             }
             /** coauthoring end **/
+            if (this.mode.canPlugins && this.panelPlugins) {
+                this.panelPlugins['hide']();
+                this.btnPlugins.toggle(false, true);
+            }
         },
 
         isOpened: function() {
@@ -309,7 +309,7 @@ define([
 
         showMenu: function(menu, opts) {
             var re = /^(\w+):?(\w*)$/.exec(menu);
-            if (re[1] == 'file') {
+            if (re[1] == 'file' && this.btnFile.isVisible() ) {
                 if (!this.btnFile.pressed) {
                     this.btnFile.toggle(true);
 //                    this.onBtnMenuClick(this.btnFile);
@@ -348,6 +348,7 @@ define([
 
         setMode: function(mode) {
             this.mode = mode;
+            this.btnAbout.panel.setMode(mode);
             return this;
         },
 

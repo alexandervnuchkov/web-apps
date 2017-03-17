@@ -110,10 +110,6 @@ define([
 
         template: _.template([
             '<table><tbody>',
-                '<tr class="edit">',
-                    '<td class="left"><label><%= scope.txtInput %></label></td>',
-                    '<td class="right"><div id="fms-chb-input-mode"/></td>',
-                '</tr>','<tr class="divider edit"></tr>',
                 /** coauthoring begin **/
                 '<tr class="coauth">',
                     '<td class="left"><label><%= scope.txtLiveComment %></label></td>',
@@ -123,6 +119,10 @@ define([
                 '<tr class="edit">',
                     '<td class="left"><label><%= scope.txtSpellCheck %></label></td>',
                     '<td class="right"><div id="fms-chb-spell-check"/></td>',
+                '</tr>','<tr class="divider edit"></tr>',
+                '<tr class="edit">',
+                    '<td class="left"><label><%= scope.txtInput %></label></td>',
+                    '<td class="right"><div id="fms-chb-input-mode"/></td>',
                 '</tr>','<tr class="divider edit"></tr>',
                 '<tr>',
                     '<td class="left"><label><%= scope.textAlignGuides %></label></td>',
@@ -210,7 +210,10 @@ define([
                 style       : 'width: 160px;',
                 editable    : false,
                 cls         : 'input-group-nr',
+                menuStyle   : 'max-height: 210px;',
                 data        : [
+                    { value: -1, displayValue: this.txtFitPage },
+                    { value: -2, displayValue: this.txtFitWidth },
                     { value: 50, displayValue: "50%" },
                     { value: 60, displayValue: "60%" },
                     { value: 70, displayValue: "70%" },
@@ -312,7 +315,7 @@ define([
             }
             /** coauthoring begin **/
             $('tr.coauth', this.el)[mode.isEdit && mode.canCoAuthoring ? 'show' : 'hide']();
-            $('tr.coauth.changes', this.el)[mode.isEdit && mode.canLicense && !mode.isOffline ? 'show' : 'hide']();
+            $('tr.coauth.changes', this.el)[mode.isEdit && mode.canLicense && !mode.isOffline && mode.canCoAuthoring ? 'show' : 'hide']();
             /** coauthoring end **/
         },
 
@@ -321,15 +324,19 @@ define([
             this.chInputMode.setValue(value!==null && parseInt(value) == 1);
 
             value = Common.localStorage.getItem("de-settings-zoom");
-            var item = this.cmbZoom.store.findWhere({value: parseInt(value)});
-            this.cmbZoom.setValue(item ? parseInt(item.get('value')) : 100);
+            value = (value!==null) ? parseInt(value) : (this.mode.customization && this.mode.customization.zoom ? parseInt(this.mode.customization.zoom) : 100);
+            var item = this.cmbZoom.store.findWhere({value: value});
+            this.cmbZoom.setValue(item ? parseInt(item.get('value')) : (value>0 ? value+'%' : 100));
 
             /** coauthoring begin **/
             value = Common.localStorage.getItem("de-settings-livecomment");
             this.chLiveComment.setValue(!(value!==null && parseInt(value) == 0));
 
             value = Common.localStorage.getItem("de-settings-coauthmode");
-            var fast_coauth = (value===null || parseInt(value) == 1) && !(this.mode.isDesktopApp && this.mode.isOffline);
+            if (value===null && Common.localStorage.getItem("de-settings-autosave")===null &&
+                this.mode.customization && this.mode.customization.autosave===false)
+                value = 0; // use customization.autosave only when de-settings-coauthmode and de-settings-autosave are null
+            var fast_coauth = (value===null || parseInt(value) == 1) && !(this.mode.isDesktopApp && this.mode.isOffline) && this.mode.canCoAuthoring;
 
             item = this.cmbCoAuthMode.store.findWhere({value: parseInt(value)});
             this.cmbCoAuthMode.setValue(item ? item.get('value') : 1);
@@ -352,7 +359,9 @@ define([
             this._oldUnits = this.cmbUnit.getValue();
 
             value = Common.localStorage.getItem("de-settings-autosave");
-            this.chAutosave.setValue(fast_coauth || (value===null || parseInt(value) == 1));
+            if (value===null && this.mode.customization && this.mode.customization.autosave===false)
+                value = 0;
+            this.chAutosave.setValue(fast_coauth || (value===null ? this.mode.canCoAuthoring : parseInt(value) == 1));
 
             value = Common.localStorage.getItem("de-settings-spellcheck");
             this.chSpell.setValue(value===null || parseInt(value) == 1);
@@ -366,7 +375,7 @@ define([
             Common.localStorage.setItem("de-settings-zoom", this.cmbZoom.getValue());
             /** coauthoring begin **/
             Common.localStorage.setItem("de-settings-livecomment", this.chLiveComment.isChecked() ? 1 : 0);
-            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline) {
+            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline && this.mode.canCoAuthoring) {
                 Common.localStorage.setItem("de-settings-coauthmode", this.cmbCoAuthMode.getValue());
                 Common.localStorage.setItem(this.cmbCoAuthMode.getValue() ? "de-settings-showchanges-fast" : "de-settings-showchanges-strict", this.cmbShowChanges.getValue());
             }
@@ -432,7 +441,9 @@ define([
         strStrict: 'Strict',
         textAutoRecover: 'Autorecover',
         strAutoRecover: 'Turn on autorecover',
-        txtInch: 'Inch'
+        txtInch: 'Inch',
+        txtFitPage: 'Fit to Page',
+        txtFitWidth: 'Fit to Width'
     }, DE.Views.FileMenuPanels.Settings || {}));
 
     DE.Views.FileMenuPanels.RecentFiles = Common.UI.BaseView.extend({

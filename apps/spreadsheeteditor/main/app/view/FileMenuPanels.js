@@ -523,6 +523,7 @@ define([
                 style       : 'width: 160px;',
                 editable    : false,
                 cls         : 'input-group-nr',
+                menuStyle   : 'max-height: 210px;',
                 data        : [
                     { value: 50, displayValue: "50%" },
                     { value: 60, displayValue: "60%" },
@@ -581,7 +582,8 @@ define([
                 data        : [
                     { value: 'en', displayValue: this.txtEn, exampleValue: this.txtExampleEn },
                     { value: 'de', displayValue: this.txtDe, exampleValue: this.txtExampleDe },
-                    { value: 'ru', displayValue: this.txtRu, exampleValue: this.txtExampleRu }
+                    { value: 'ru', displayValue: this.txtRu, exampleValue: this.txtExampleRu },
+                    { value: 'pl', displayValue: this.txtPl, exampleValue: this.txtExamplePl }
                 ]
             }).on('selected', _.bind(function(combo, record) {
                 this.updateFuncExample(record.exampleValue);
@@ -651,7 +653,7 @@ define([
                 this.lblAutosave.text(this.textAutoRecover);
             }
             $('tr.coauth', this.el)[mode.canCoAuthoring && mode.isEdit ? 'show' : 'hide']();
-            $('tr.coauth.changes', this.el)[mode.isEdit && mode.canLicense && !mode.isOffline ? 'show' : 'hide']();
+            $('tr.coauth.changes', this.el)[mode.isEdit && mode.canLicense && !mode.isOffline && mode.canCoAuthoring? 'show' : 'hide']();
         },
 
         setApi: function(api) {
@@ -660,15 +662,19 @@ define([
 
         updateSettings: function() {
             var value = Common.localStorage.getItem("sse-settings-zoom");
-            var item = this.cmbZoom.store.findWhere({value: parseInt(value)});
-            this.cmbZoom.setValue(item ? parseInt(item.get('value')) : 100);
+            value = (value!==null) ? parseInt(value) : (this.mode.customization && this.mode.customization.zoom ? parseInt(this.mode.customization.zoom) : 100);
+            var item = this.cmbZoom.store.findWhere({value: value});
+            this.cmbZoom.setValue(item ? parseInt(item.get('value')) : (value>0 ? value+'%' : 100));
 
             /** coauthoring begin **/
             value = Common.localStorage.getItem("sse-settings-livecomment");
             this.chLiveComment.setValue(!(value!==null && parseInt(value) == 0));
 
             value = Common.localStorage.getItem("sse-settings-coauthmode");
-            var fast_coauth = (value===null || parseInt(value) == 1) && !(this.mode.isDesktopApp && this.mode.isOffline);
+            if (value===null && Common.localStorage.getItem("sse-settings-autosave")===null &&
+                this.mode.customization && this.mode.customization.autosave===false)
+                value = 0; // use customization.autosave only when sse-settings-coauthmode and sse-settings-autosave are null
+            var fast_coauth = (value===null || parseInt(value) == 1) && !(this.mode.isDesktopApp && this.mode.isOffline) && this.mode.canCoAuthoring;
 
             item = this.cmbCoAuthMode.store.findWhere({value: parseInt(value)});
             this.cmbCoAuthMode.setValue(item ? item.get('value') : 1);
@@ -685,7 +691,9 @@ define([
             this._oldUnits = this.cmbUnit.getValue();
 
             value = Common.localStorage.getItem("sse-settings-autosave");
-            this.chAutosave.setValue(fast_coauth || (value===null || parseInt(value) == 1));
+            if (value===null && this.mode.customization && this.mode.customization.autosave===false)
+                value = 0;
+            this.chAutosave.setValue(fast_coauth || (value===null ? this.mode.canCoAuthoring : parseInt(value) == 1));
 
             value = Common.localStorage.getItem("sse-settings-func-locale");
             if (value===null)
@@ -726,7 +734,7 @@ define([
             Common.localStorage.setItem("sse-settings-zoom", this.cmbZoom.getValue());
             /** coauthoring begin **/
             Common.localStorage.setItem("sse-settings-livecomment", this.chLiveComment.isChecked() ? 1 : 0);
-            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline) 
+            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline && this.mode.canCoAuthoring)
                 Common.localStorage.setItem("sse-settings-coauthmode", this.cmbCoAuthMode.getValue());
             /** coauthoring end **/
             Common.localStorage.setItem("sse-settings-fontrender", this.cmbFontRender.getValue());
@@ -774,9 +782,11 @@ define([
         txtEn: 'English',
         txtDe: 'Deutsch',
         txtRu: 'Russian',
+        txtPl: 'Polish',
         txtExampleEn: ' SUM; MIN; MAX; COUNT',
         txtExampleDe: ' SUMME; MIN; MAX; ANZAHL',
         txtExampleRu: ' СУММ; МИН; МАКС; СЧЁТ',
+        txtExamplePl: ' SUMA; MIN; MAX; ILE.LICZB',
         strFuncLocale: 'Formula Language',
         strFuncLocaleEx: 'Example: SUM; MIN; MAX; COUNT',
         strRegSettings: 'Regional Settings',

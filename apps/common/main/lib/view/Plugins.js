@@ -58,31 +58,143 @@ define([
                 '<label id="plugins-header"><%= scope.strPlugins %></label>',
                 '<div id="plugins-list" class="">',
                 '</div>',
-            '</div>'
+            '</div>',
+            '<div id="current-plugin-box" class="layout-ct vbox hidden">',
+                '<div id="current-plugin-header">',
+                    '<label></label>',
+                    '<div id="id-plugin-close" class="plugin-close img-commonctrl"></div>',
+                '</div>',
+                '<div id="current-plugin-frame" class="">',
+                '</div>',
+            '</div>',
+            '<div id="plugins-mask" style="display: none;">'
         ].join('')),
 
         initialize: function(options) {
             _.extend(this, options);
             this.pluginsPath = '../../../../sdkjs-plugins/';
+            this._locked = false;
+            this._state = {
+                DisabledControls: true
+            };
+            this.lockedControls = [];
             Common.UI.BaseView.prototype.initialize.call(this, arguments);
         },
 
         render: function(el) {
             el = el || this.el;
             $(el).html(this.template({scope: this}));
+            this.$el = $(el);
 
             this.viewPluginsList = new Common.UI.DataView({
                 el: $('#plugins-list'),
                 store: this.storePlugins,
                 enableKeyEvents: false,
-                itemTemplate: _.template('<div id="<%= id %>" class="item-plugins" style="background-image: url(' + '<% if (baseUrl !=="") { %>' + '<%= baseUrl %>'  + '<% } else { %>' + this.pluginsPath + '<% } %>' + '<%= variations[currentVariation].get("icons")[(window.devicePixelRatio > 1) ? 1 : 0] %>); background-position: 0 0;"></div>')
+                itemTemplate: _.template([
+                    '<div id="<%= id %>" class="item-plugins" style="display: block;">',
+                        '<div class="plugin-icon" style="background-image: url(' + '<% if (variations[currentVariation].get("isRelativeUrl")) { if (baseUrl !=="") { %>' + '<%= baseUrl %>' + '<% } else { %>' + this.pluginsPath + '<% } } %>' + '<%= variations[currentVariation].get("icons")[(window.devicePixelRatio > 1) ? 1 : 0] %>);"></div>',
+                        '<% if (variations.length>1) { %>',
+                        '<div class="plugin-caret img-commonctrl"></div>',
+                        '<% } %>',
+                        '<%= name %>',
+                    '</div>'
+                ].join(''))
+            });
+            this.lockedControls.push(this.viewPluginsList);
+            this.viewPluginsList.cmpEl.off('click');
+
+            this.pluginName = $('#current-plugin-header label');
+            this.pluginsPanel = $('#plugins-box');
+            this.pluginsMask = $('#plugins-mask');
+            this.currentPluginPanel = $('#current-plugin-box');
+            this.currentPluginFrame = $('#current-plugin-frame');
+
+            this.pluginMenu = new Common.UI.Menu({
+                menuAlign   : 'tr-br',
+                items: []
             });
 
             this.trigger('render:after', this);
             return this;
         },
 
-        strPlugins: 'Plugins'
+        setLocked: function (locked) {
+            this._locked = locked;
+        },
+
+        ChangeSettings: function(props) {
+            this.disableControls(this._locked);
+        },
+
+        disableControls: function(disable) {
+            if (this._state.DisabledControls!==disable) {
+                this._state.DisabledControls = disable;
+                _.each(this.lockedControls, function(item) {
+                    item.setDisabled(disable);
+                });
+
+                this.pluginsMask.css('display', disable ? 'block' : 'none');
+            }
+        },
+
+        openInsideMode: function(name, url) {
+            if (!this.pluginsPanel) return false;
+
+            this.pluginsPanel.toggleClass('hidden', true);
+            this.currentPluginPanel.toggleClass('hidden', false);
+
+            this.pluginName.text(name);
+            if (!this.iframePlugin) {
+                this.iframePlugin = document.createElement("iframe");
+                this.iframePlugin.id           = 'plugin_iframe';
+                this.iframePlugin.name         = 'pluginFrameEditor',
+                this.iframePlugin.width        = '100%';
+                this.iframePlugin.height       = '100%';
+                this.iframePlugin.align        = "top";
+                this.iframePlugin.frameBorder  = 0;
+                this.iframePlugin.scrolling    = "no";
+                this.iframePlugin.onload       = _.bind(this._onLoad,this);
+                this.currentPluginFrame.append(this.iframePlugin);
+
+                if (!this.loadMask)
+                    this.loadMask = new Common.UI.LoadMask({owner: this.currentPluginFrame});
+                this.loadMask.setTitle(this.textLoading);
+                this.loadMask.show();
+
+                this.iframePlugin.src = url;
+            }
+            return true;
+        },
+
+        closeInsideMode: function() {
+            if (!this.pluginsPanel) return;
+
+            if (this.iframePlugin) {
+                this.currentPluginFrame.empty();
+                this.iframePlugin = null;
+            }
+            this.currentPluginPanel.toggleClass('hidden', true);
+            this.pluginsPanel.toggleClass('hidden', false);
+        },
+
+        openNotVisualMode: function(pluginGuid) {
+            var rec = this.viewPluginsList.store.findWhere({guid: pluginGuid});
+            if (rec)
+                this.viewPluginsList.cmpEl.find('#' + rec.get('id')).parent().addClass('selected');
+        },
+
+        closeNotVisualMode: function() {
+            this.viewPluginsList.cmpEl.find('.selected').removeClass('selected');
+        },
+
+        _onLoad: function() {
+            if (this.loadMask)
+                this.loadMask.hide();
+        },
+
+        strPlugins: 'Plugins',
+        textLoading: 'Loading',
+        textStart: 'Start'
 
     }, Common.Views.Plugins || {}));
 
@@ -90,13 +202,16 @@ define([
         initialize : function(options) {
             var _options = {};
             _.extend(_options,  {
-                width: 800,
-                height: (window.innerHeight-600)<0 ? window.innerHeight: 600,
                 cls: 'advanced-settings-dlg',
-                header: true
+                header: true,
+                enableKeyEvents: false
             }, options);
 
             var header_footer = (_options.buttons && _.size(_options.buttons)>0) ? 85 : 34;
+            _options.width = (Common.Utils.innerWidth()-_options.width)<0 ? Common.Utils.innerWidth(): _options.width,
+            _options.height += header_footer;
+            _options.height = (Common.Utils.innerHeight()-_options.height)<0 ? Common.Utils.innerHeight(): _options.height;
+
             this.template = [
                 '<div id="id-plugin-container" class="box" style="height:' + (_options.height-header_footer) + 'px;">',
                     '<div id="id-plugin-placeholder" style="width: 100%;height: 100%;"></div>',
@@ -121,59 +236,59 @@ define([
             Common.UI.Window.prototype.render.call(this);
             this.$window.find('> .body').css({height: 'auto', overflow: 'hidden'});
 
+            this.boxEl = this.$window.find('.body > .box');
+            this._headerFooterHeight = (this.options.buttons && _.size(this.options.buttons)>0) ? 85 : 34;
+            this._headerFooterHeight += ((parseInt(this.$window.css('border-top-width')) + parseInt(this.$window.css('border-bottom-width'))));
+
             var iframe = document.createElement("iframe");
             iframe.id           = 'plugin_iframe';
-            iframe.name         = 'pluginFrameEditor',
+            iframe.name         = 'pluginFrameEditor';
             iframe.width        = '100%';
             iframe.height       = '100%';
             iframe.align        = "top";
             iframe.frameBorder  = 0;
             iframe.scrolling    = "no";
             iframe.onload       = _.bind(this._onLoad,this);
-            $('#id-plugin-placeholder').append(iframe);
-
-            this.loadMask = new Common.UI.LoadMask({owner: $('#id-plugin-placeholder')});
-            this.loadMask.setTitle(this.textLoading);
-            this.loadMask.show();
-
-            iframe.src = this.url;
 
             var me = this;
+            setTimeout(function(){
+                if (me.isLoaded) return;
+                me.loadMask = new Common.UI.LoadMask({owner: $('#id-plugin-placeholder')});
+                me.loadMask.setTitle(me.textLoading);
+                me.loadMask.show();
+                if (me.isLoaded) me.loadMask.hide();
+            }, 500);
 
-            this.on('close', function(obj){
-            });
+            iframe.src = this.url;
+            $('#id-plugin-placeholder').append(iframe);
 
-            this.on('show', function(obj){
-                var h = me.getHeight();
-                if (window.innerHeight>h && h<600 || window.innerHeight<h) {
-                    h = Math.min(window.innerHeight, 600);
-                    me.setHeight(h);
-                }
+            this.on('resizing', function(args){
+                me.boxEl.css('height', parseInt(me.$window.css('height')) - me._headerFooterHeight);
             });
         },
 
         _onLoad: function() {
+            this.isLoaded = true;
             if (this.loadMask)
                 this.loadMask.hide();
         },
 
-        setHeight: function(height) {
-            if (height >= 0) {
-                var min = parseInt(this.$window.css('min-height'));
-                height < min && (height = min);
-                this.$window.height(height);
+        setInnerSize: function(width, height) {
+            var maxHeight = Common.Utils.innerHeight(),
+                maxWidth = Common.Utils.innerWidth(),
+                borders_width = (parseInt(this.$window.css('border-left-width')) + parseInt(this.$window.css('border-right-width')));
+            if (maxHeight<height + this._headerFooterHeight)
+                height = maxHeight - this._headerFooterHeight;
+            if (maxWidth<width + borders_width)
+                width = maxWidth - borders_width;
 
-                var header_height = (this.initConfig.header) ? parseInt(this.$window.find('> .header').css('height')) : 0;
+            this.boxEl.css('height', height);
 
-                this.$window.find('> .body').css('height', height-header_height);
-                this.$window.find('> .body > .box').css('height', height-85);
+            Common.UI.Window.prototype.setHeight.call(this, height + this._headerFooterHeight);
+            Common.UI.Window.prototype.setWidth.call(this, width + borders_width);
 
-                var top  = ((parseInt(window.innerHeight) - parseInt(height)) / 2) * 0.9;
-                var left = (parseInt(window.innerWidth) - parseInt(this.initConfig.width)) / 2;
-
-                this.$window.css('left',left);
-                this.$window.css('top',top);
-            }
+            this.$window.css('left',(maxWidth - width - borders_width) / 2);
+            this.$window.css('top',((maxHeight - height - this._headerFooterHeight) / 2) * 0.9);
         },
 
         textLoading : 'Loading'

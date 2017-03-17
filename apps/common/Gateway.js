@@ -99,6 +99,7 @@ Common.Gateway = new(function() {
     var _postMessage = function(msg) {
         // TODO: specify explicit origin
         if (window.parent && window.JSON) {
+            msg.frameEditorId = window.frameEditorId;
             window.parent.postMessage(window.JSON.stringify(msg), "*");
         }
     };
@@ -162,6 +163,16 @@ Common.Gateway = new(function() {
             });
         },
 
+        requestRestore: function(version, url) {
+            _postMessage({
+                event: 'onRequestRestore',
+                data: {
+                    version: version,
+                    url: url
+                }
+            });
+        },
+
         requestEmailAddresses: function() {
             _postMessage({ event: 'onRequestEmailAddresses' });
         },
@@ -221,6 +232,14 @@ Common.Gateway = new(function() {
         
         collaborativeChanges: function() {
             _postMessage({event: 'onCollaborativeChanges'});
+        },
+        
+        requestRename: function(title) {
+            _postMessage({event: 'onRequestRename', data: title});
+        },
+
+        metaChange: function(meta) {
+            _postMessage({event: 'onMetaChange', data: meta});
         },
 
         on: function(event, handler){

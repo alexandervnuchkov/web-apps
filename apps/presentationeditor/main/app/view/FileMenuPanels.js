@@ -164,8 +164,10 @@ define([
                 style       : 'width: 160px;',
                 editable    : false,
                 cls         : 'input-group-nr',
+                menuStyle   : 'max-height: 210px;',
                 data        : [
                     { value: -1, displayValue: this.txtFitSlide },
+                    { value: -2, displayValue: this.txtFitWidth },
                     { value: 50, displayValue: "50%" },
                     { value: 60, displayValue: "60%" },
                     { value: 70, displayValue: "70%" },
@@ -258,7 +260,7 @@ define([
                 this.lblAutosave.text(this.textAutoRecover);
             }
             /** coauthoring begin **/
-            $('tr.coauth.changes', this.el)[mode.isEdit && mode.canLicense && !mode.isOffline ? 'show' : 'hide']();
+            $('tr.coauth.changes', this.el)[mode.isEdit && mode.canLicense && !mode.isOffline && mode.canCoAuthoring ? 'show' : 'hide']();
             /** coauthoring end **/
         },
 
@@ -267,13 +269,16 @@ define([
             this.chInputMode.setValue(value!==null && parseInt(value) == 1);
 
             value = Common.localStorage.getItem("pe-settings-zoom");
-            value = (value!==null) ? parseInt(value) : -1;
+            value = (value!==null) ? parseInt(value) : (this.mode.customization && this.mode.customization.zoom ? parseInt(this.mode.customization.zoom) : -1);
             var item = this.cmbZoom.store.findWhere({value: value});
-            this.cmbZoom.setValue(item ? parseInt(item.get('value')) : 100);
+            this.cmbZoom.setValue(item ? parseInt(item.get('value')) : (value>0 ? value+'%' : 100));
 
             /** coauthoring begin **/
             value = Common.localStorage.getItem("pe-settings-coauthmode");
-            var fast_coauth = (value===null || parseInt(value) == 1) && !(this.mode.isDesktopApp && this.mode.isOffline);
+            if (value===null && Common.localStorage.getItem("pe-settings-autosave")===null &&
+                this.mode.customization && this.mode.customization.autosave===false)
+                value = 0; // use customization.autosave only when pe-settings-coauthmode and pe-settings-autosave are null
+            var fast_coauth = (value===null || parseInt(value) == 1) && !(this.mode.isDesktopApp && this.mode.isOffline) && this.mode.canCoAuthoring;
 
             item = this.cmbCoAuthMode.store.findWhere({value: parseInt(value)});
             this.cmbCoAuthMode.setValue(item ? item.get('value') : 1);
@@ -286,7 +291,9 @@ define([
             this._oldUnits = this.cmbUnit.getValue();
 
             value = Common.localStorage.getItem("pe-settings-autosave");
-            this.chAutosave.setValue(fast_coauth || (value===null || parseInt(value) == 1));
+            if (value===null && this.mode.customization && this.mode.customization.autosave===false)
+                value = 0;
+            this.chAutosave.setValue(fast_coauth || (value===null ? this.mode.canCoAuthoring : parseInt(value) == 1));
 
             value = Common.localStorage.getItem("pe-settings-showsnaplines");
             this.chAlignGuides.setValue(value===null || parseInt(value) == 1);
@@ -296,7 +303,7 @@ define([
             Common.localStorage.setItem("pe-settings-inputmode", this.chInputMode.isChecked() ? 1 : 0);
             Common.localStorage.setItem("pe-settings-zoom", this.cmbZoom.getValue());
             /** coauthoring begin **/
-            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline) {
+            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline && this.mode.canCoAuthoring) {
                 Common.localStorage.setItem("pe-settings-coauthmode", this.cmbCoAuthMode.getValue());
             }
             /** coauthoring end **/
@@ -316,7 +323,7 @@ define([
         strInputMode:   'Turn on hieroglyphs',
         strZoom: 'Default Zoom Value',
         okButtonText: 'Apply',
-        txtFitSlide: 'Fit Slide',
+        txtFitSlide: 'Fit to Slide',
         txtInput: 'Alternate Input',
         strUnit: 'Unit of Measurement',
         txtCm: 'Centimeter',
@@ -337,7 +344,8 @@ define([
         strStrict: 'Strict',
         textAutoRecover: 'Autorecover',
         strAutoRecover: 'Turn on autorecover',
-        txtInch: 'Inch'
+        txtInch: 'Inch',
+        txtFitWidth: 'Fit to Width'
     }, PE.Views.FileMenuPanels.Settings || {}));
 
     PE.Views.FileMenuPanels.RecentFiles = Common.UI.BaseView.extend({

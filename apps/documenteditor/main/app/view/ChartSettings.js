@@ -44,6 +44,7 @@ define([
     'underscore',
     'backbone',
     'common/main/lib/component/Button',
+    'common/main/lib/component/ComboDataView',
     'documenteditor/main/app/view/ImageSettingsAdvanced'
 ], function (menuTemplate, $, _, Backbone) {
     'use strict';
@@ -63,7 +64,6 @@ define([
         },
 
         initialize: function () {
-            var me = this;
             this._initSettings = true;
 
             this._state = {
@@ -85,7 +85,131 @@ define([
 
             this.render();
 
-            var viewData = [
+            this.labelWidth = $(this.el).find('#chart-label-width');
+            this.labelHeight = $(this.el).find('#chart-label-height');
+        },
+
+        render: function () {
+            var el = $(this.el);
+            el.html(this.template({
+                scope: this
+            }));
+        },
+
+        setApi: function(api) {
+            this.api = api;
+            if (this.api) {
+                this.api.asc_registerCallback('asc_onImgWrapStyleChanged', _.bind(this._ChartWrapStyleChanged, this));
+                this.api.asc_registerCallback('asc_onUpdateChartStyles', _.bind(this._onUpdateChartStyles, this));
+            }
+            return this;
+        },
+
+        ChangeSettings: function(props) {
+            if (this._initSettings)
+                this.createDelayedElements();
+
+            this.disableControls(this._locked);
+
+            if (props  && props.get_ChartProperties()){
+                this._originalProps = new Asc.asc_CImgProperty(props);
+
+                this._noApply = true;
+                var value = props.get_WrappingStyle();
+                if (this._state.WrappingStyle!==value) {
+                    var record = this.mnuWrapPicker.store.findWhere({data: value});
+                    this.mnuWrapPicker.selectRecord(record, true);
+                    if (record)
+                        this.btnWrapType.setIconCls('item-wrap ' + record.get('iconCls'));
+                    else
+                        this.btnWrapType.setIconCls('');
+                    this._state.WrappingStyle=value;
+                }
+
+                this.chartProps = props.get_ChartProperties();
+
+                value = props.get_SeveralCharts() || this._locked;
+                if (this._state.SeveralCharts!==value) {
+                    this.btnEditData.setDisabled(value);
+                    this._state.SeveralCharts=value;
+                }
+
+                value = props.get_SeveralChartTypes();
+                if (this._state.SeveralCharts && value) {
+                    this.btnChartType.setIconCls('');
+                    this._state.ChartType = null;
+                } else {
+                    var type = this.chartProps.getType();
+                    if (this._state.ChartType !== type) {
+                        var record = this.mnuChartTypePicker.store.findWhere({type: type});
+                        this.mnuChartTypePicker.selectRecord(record, true);
+                        if (record) {
+                            this.btnChartType.setIconCls('item-chartlist ' + record.get('iconCls'));
+                        }
+                        this.updateChartStyles(this.api.asc_getChartPreviews(type));
+                        this._state.ChartType = type;
+                    }
+                }
+
+                value = props.get_SeveralChartStyles();
+                if (this._state.SeveralCharts && value) {
+                    this.cmbChartStyle.fieldPicker.deselectAll();
+                    this.cmbChartStyle.menuPicker.deselectAll();
+                    this._state.ChartStyle = null;
+                } else {
+                    value = this.chartProps.getStyle();
+                    if (this._state.ChartStyle!==value || this._isChartStylesChanged) {
+                        this.cmbChartStyle.suspendEvents();
+                        var rec = this.cmbChartStyle.menuPicker.store.findWhere({data: value});
+                        this.cmbChartStyle.menuPicker.selectRecord(rec);
+                        this.cmbChartStyle.resumeEvents();
+
+                        if (this._isChartStylesChanged) {
+                            if (rec)
+                                this.cmbChartStyle.fillComboView(this.cmbChartStyle.menuPicker.getSelectedRec(),true);
+                            else
+                                this.cmbChartStyle.fillComboView(this.cmbChartStyle.menuPicker.store.at(0), true);
+                        }
+                        this._state.ChartStyle=value;
+                    }
+                }
+                this._isChartStylesChanged = false;
+
+                this._noApply = false;
+
+                value = props.get_CanBeFlow() && !this._locked;
+                var fromgroup = props.get_FromGroup() || this._locked;
+                if (this._state.CanBeFlow!==value || this._state.FromGroup!==fromgroup) {
+                    this.btnWrapType.setDisabled(!value || fromgroup);
+                    this._state.CanBeFlow=value;
+                    this._state.FromGroup=fromgroup;
+                }
+
+                value = props.get_Width();
+                if ( Math.abs(this._state.Width-value)>0.001 ) {
+                    this.labelWidth[0].innerHTML = this.textWidth + ': ' + Common.Utils.Metric.fnRecalcFromMM(value).toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
+                    this._state.Width = value;
+                }
+
+                value = props.get_Height();
+                if ( Math.abs(this._state.Height-value)>0.001 ) {
+                    this.labelHeight[0].innerHTML = this.textHeight + ': ' + Common.Utils.Metric.fnRecalcFromMM(value).toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
+                    this._state.Height = value;
+                }
+            }
+        },
+
+        updateMetricUnit: function() {
+            var value = Common.Utils.Metric.fnRecalcFromMM(this._state.Width);
+            this.labelWidth[0].innerHTML = this.textWidth + ': ' + value.toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
+
+            value = Common.Utils.Metric.fnRecalcFromMM(this._state.Height);
+            this.labelHeight[0].innerHTML = this.textHeight + ': ' + value.toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
+        },
+
+        createDelayedControls: function() {
+            var me = this,
+                viewData = [
                 { offsetx: 0, data: Asc.c_oAscWrapStyle2.Inline, iconCls:'wrap-inline', tip: this.txtInline, selected: true },
                 { offsetx: 50, data: Asc.c_oAscWrapStyle2.Square, iconCls:'wrap-square', tip: this.txtSquare },
                 { offsetx: 100, data: Asc.c_oAscWrapStyle2.Tight, iconCls:'wrap-tight', tip: this.txtTight },
@@ -174,168 +298,24 @@ define([
             this.mnuChartTypePicker.on('item:click', _.bind(this.onSelectType, this, this.btnChartType));
             this.lockedControls.push(this.btnChartType);
 
-            this.btnChartStyle = new Common.UI.Button({
-                cls         : 'btn-large-dataview',
-                iconCls     : 'item-wrap',
-                menu        : new Common.UI.Menu({
-                    menuAlign: 'tr-br',
-                    items: [
-                        { template: _.template('<div id="id-chart-menu-style" style="width: 245px; margin: 0 5px;"></div>') }
-                    ]
-                })
-            });
-            this.btnChartStyle.on('render:after', function(btn) {
-                me.mnuChartStylePicker = new Common.UI.DataView({
-                    el: $('#id-chart-menu-style'),
-                    style: 'max-height: 411px;',
-                    parentMenu: btn.menu,
-                    store: new Common.UI.DataViewStore(),
-                    itemTemplate: _.template('<div id="<%= id %>" class="item-wrap" style="background-image: url(<%= imageUrl %>); background-position: 0 0;"></div>')
-                });
-
-                if (me.btnChartStyle.menu) {
-                    me.btnChartStyle.menu.on('show:after', function () {
-                        me.mnuChartStylePicker.scroller.update({alwaysVisibleY: true});
-                    });
-                }
-            });
-            this.btnChartStyle.render($('#chart-button-style'));
-            this.mnuChartStylePicker.on('item:click', _.bind(this.onSelectStyle, this, this.btnChartStyle));
-            this.lockedControls.push(this.btnChartStyle);
-
-            this.labelWidth = $(this.el).find('#chart-label-width');
-            this.labelHeight = $(this.el).find('#chart-label-height');
-
             this.btnEditData = new Common.UI.Button({
                 el: $('#chart-button-edit-data')
             });
             this.lockedControls.push(this.btnEditData);
             this.btnEditData.on('click', _.bind(this.setEditData, this));
+
+            this.linkAdvanced = $('#chart-advanced-link');
             $(this.el).on('click', '#chart-advanced-link', _.bind(this.openAdvancedSettings, this));
         },
 
-        render: function () {
-            var el = $(this.el);
-            el.html(this.template({
-                scope: this
-            }));
-
-            this.linkAdvanced = $('#chart-advanced-link');
-        },
-
-        setApi: function(api) {
-            this.api = api;
-            if (this.api) {
-                this.api.asc_registerCallback('asc_onImgWrapStyleChanged', _.bind(this._ChartWrapStyleChanged, this));
-                this.api.asc_registerCallback('asc_onUpdateChartStyles', _.bind(this._onUpdateChartStyles, this));
-            }
-            return this;
-        },
-
-        ChangeSettings: function(props) {
-            if (this._initSettings) {
-                this.createDelayedElements();
-                this._initSettings = false;
-            }
-
-            this.disableControls(this._locked);
-
-            if (props  && props.get_ChartProperties()){
-                this._originalProps = new Asc.asc_CImgProperty(props);
-
-                this._noApply = true;
-                var value = props.get_WrappingStyle();
-                if (this._state.WrappingStyle!==value) {
-                    var record = this.mnuWrapPicker.store.findWhere({data: value});
-                    this.mnuWrapPicker.selectRecord(record, true);
-                    if (record)
-                        this.btnWrapType.setIconCls('item-wrap ' + record.get('iconCls'));
-                    else
-                        this.btnWrapType.setIconCls('');
-                    this._state.WrappingStyle=value;
-                }
-
-                this.chartProps = props.get_ChartProperties();
-
-                value = props.get_SeveralCharts() || this._locked;
-                if (this._state.SeveralCharts!==value) {
-                    this.btnEditData.setDisabled(value);
-                    this._state.SeveralCharts=value;
-                }
-
-                value = props.get_SeveralChartTypes();
-                if (this._state.SeveralCharts && value) {
-                    this.btnChartType.setIconCls('');
-                    this._state.ChartType = null;
-                } else {
-                    var type = this.chartProps.getType();
-                    if (this._state.ChartType !== type) {
-                        var record = this.mnuChartTypePicker.store.findWhere({type: type});
-                        this.mnuChartTypePicker.selectRecord(record, true);
-                        if (record) {
-                            this.btnChartType.setIconCls('item-chartlist ' + record.get('iconCls'));
-                        }
-                        this.updateChartStyles(this.api.asc_getChartPreviews(type));
-                        this._state.ChartType = type;
-                    }
-                }
-
-                value = props.get_SeveralChartStyles();
-                if (this._state.SeveralCharts && value) {
-                    var btnIconEl = this.btnChartStyle.cmpEl.find('span.btn-icon');
-                    btnIconEl.css('background-image', 'none');
-                    this.mnuChartStylePicker.selectRecord(null, true);
-                    this._state.ChartStyle = null;
-                } else {
-                    value = this.chartProps.getStyle();
-                    if (this._state.ChartStyle!==value) {
-                        var record = this.mnuChartStylePicker.store.findWhere({data: value});
-                        this.mnuChartStylePicker.selectRecord(record, true);
-                        if (record) {
-                            var btnIconEl = this.btnChartStyle.cmpEl.find('span.btn-icon');
-                            btnIconEl.css('background-image', 'url(' + record.get('imageUrl') + ')');
-                        }
-                        this._state.ChartStyle=value;
-                    }
-                }
-
-                this._noApply = false;
-
-                value = props.get_CanBeFlow() && !this._locked;
-                var fromgroup = props.get_FromGroup() || this._locked;
-                if (this._state.CanBeFlow!==value || this._state.FromGroup!==fromgroup) {
-                    this.btnWrapType.setDisabled(!value || fromgroup);
-                    this._state.CanBeFlow=value;
-                    this._state.FromGroup=fromgroup;
-                }
-
-                value = props.get_Width();
-                if ( Math.abs(this._state.Width-value)>0.001 ) {
-                    this.labelWidth[0].innerHTML = this.textWidth + ': ' + Common.Utils.Metric.fnRecalcFromMM(value).toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
-                    this._state.Width = value;
-                }
-
-                value = props.get_Height();
-                if ( Math.abs(this._state.Height-value)>0.001 ) {
-                    this.labelHeight[0].innerHTML = this.textHeight + ': ' + Common.Utils.Metric.fnRecalcFromMM(value).toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
-                    this._state.Height = value;
-                }
-            }
-        },
-
-        updateMetricUnit: function() {
-            var value = Common.Utils.Metric.fnRecalcFromMM(this._state.Width);
-            this.labelWidth[0].innerHTML = this.textWidth + ': ' + value.toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
-
-            value = Common.Utils.Metric.fnRecalcFromMM(this._state.Height);
-            this.labelHeight[0].innerHTML = this.textHeight + ': ' + value.toFixed(1) + ' ' + Common.Utils.Metric.getCurrentMetricName();
-        },
-
         createDelayedElements: function() {
+            this.createDelayedControls();
             this.updateMetricUnit();
+            this._initSettings = false;
         },
 
         _ChartWrapStyleChanged: function(style) {
+            if (!this.mnuWrapPicker) return;
             if (this._state.WrappingStyle!==style) {
                 this._noApply = true;
                 var record = this.mnuWrapPicker.store.findWhere({data: style});
@@ -469,34 +449,15 @@ define([
             this.fireEvent('editcomplete', this);
         },
 
-        onSelectStyle: function(btn, picker, itemView, record) {
+        onSelectStyle: function(combo, record) {
             if (this._noApply) return;
-
-            var rawData = {},
-                isPickerSelect = _.isFunction(record.toJSON);
-
-            if (isPickerSelect){
-                if (record.get('selected')) {
-                    rawData = record.toJSON();
-                } else {
-                    // record deselected
-                    return;
-                }
-            } else {
-                rawData = record;
-            }
-
-            var style = 'url(' + rawData.imageUrl + ')';
-            var btnIconEl = this.btnChartStyle.cmpEl.find('span.btn-icon');
-            btnIconEl.css('background-image', style);
 
             if (this.api && !this._noApply && this.chartProps) {
                 var props = new Asc.asc_CImgProperty();
-                this.chartProps.putStyle(rawData.data);
+                this.chartProps.putStyle(record.get('data'));
                 props.put_ChartProperties(this.chartProps);
                 this.api.ImgApply(props);
             }
-
             this.fireEvent('editcomplete', this);
         },
 
@@ -507,33 +468,50 @@ define([
 
         updateChartStyles: function(styles) {
             var me = this;
-            if (styles && styles.length>0){
-                var stylesStore = this.mnuChartStylePicker.store;
-                if (stylesStore) {
-                    var stylearray = [],
-                        selectedIdx = -1,
-                        selectedUrl;
-                    _.each(styles, function(item, index){
-                        stylearray.push({
-                            imageUrl: item.asc_getImageUrl(),
-                            data    : item.asc_getStyle(),
-                            tip     : me.textStyle + ' ' + item.asc_getStyle()
-                        });
-                        if (me._state.ChartStyle == item.asc_getStyle()) {
-                            selectedIdx = index;
-                            selectedUrl = item.asc_getImageUrl();
-                        }
+            this._isChartStylesChanged = true;
 
-                    });
-
-                    stylesStore.reset(stylearray, {silent: false});
-                }
+            if (!this.cmbChartStyle) {
+                this.cmbChartStyle = new Common.UI.ComboDataView({
+                    itemWidth: 50,
+                    itemHeight: 50,
+                    menuMaxHeight: 270,
+                    enableKeyEvents: true,
+                    cls: 'combo-chart-style'
+                });
+                this.cmbChartStyle.render($('#chart-combo-style'));
+                this.cmbChartStyle.openButton.menu.cmpEl.css({
+                    'min-width': 178,
+                    'max-width': 178
+                });
+                this.cmbChartStyle.on('click', _.bind(this.onSelectStyle, this));
+                this.cmbChartStyle.openButton.menu.on('show:after', function () {
+                    me.cmbChartStyle.menuPicker.scroller.update({alwaysVisibleY: true});
+                });
+                this.lockedControls.push(this.cmbChartStyle);
             }
-            this.mnuChartStylePicker.selectByIndex(selectedIdx, true);
-            if (selectedIdx>=0 && this.btnChartStyle.cmpEl) {
-                var style = 'url(' + selectedUrl + ')';
-                var btnIconEl = this.btnChartStyle.cmpEl.find('span.btn-icon');
-                btnIconEl.css('background-image', style);
+
+            if (styles && styles.length>0){
+                var stylesStore = this.cmbChartStyle.menuPicker.store;
+                if (stylesStore) {
+                    var count = stylesStore.length;
+                    if (count>0 && count==styles.length) {
+                        var data = stylesStore.models;
+                        _.each(styles, function(style, index){
+                            data[index].set('imageUrl', style.asc_getImageUrl());
+                        });
+                    } else {
+                        var stylearray = [],
+                            selectedIdx = -1;
+                        _.each(styles, function(item, index){
+                            stylearray.push({
+                                imageUrl: item.asc_getImageUrl(),
+                                data    : item.asc_getStyle(),
+                                tip     : me.textStyle + ' ' + item.asc_getStyle()
+                            });
+                        });
+                        stylesStore.reset(stylearray, {silent: false});
+                    }
+                }
             }
         },
 
@@ -542,6 +520,8 @@ define([
         },
 
         disableControls: function(disable) {
+            if (this._initSettings) return;
+            
             if (this._state.DisabledControls!==disable) {
                 this._state.DisabledControls = disable;
                 _.each(this.lockedControls, function(item) {
@@ -570,7 +550,7 @@ define([
         textBar:            'Bar Chart',
         textArea:           'Area Chart',
         textPie:            'Pie Chart',
-        textPoint:          'Point Chart',
+        textPoint:          'XY (Scatter) Chart',
         textStock:          'Stock Chart',
         textStyle:          'Style'
 

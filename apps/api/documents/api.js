@@ -37,10 +37,12 @@
                 },
                 permissions: {
                     edit: <can edit>, // default = true
-                    download: <can download>,
-                    reader: <can view in readable mode>
-                    review: <can review> // default = edit,
-                    print: <can print> // default = true
+                    download: <can download>, // default = true
+                    reader: <can view in readable mode>,
+                    review: <can review>, // default = edit
+                    print: <can print>, // default = true
+                    rename: <can rename>, // default = false
+                    changeHistory: <can change history>, // default = false
                 }
             },
             editorConfig: {
@@ -60,8 +62,7 @@
 
                 user: {
                     id: 'user id',
-                    firstname: 'user first name',
-                    lastname: 'user last name'
+                    name: 'user name'
                 },
                 recent: [
                     {
@@ -95,7 +96,7 @@
                         info: 'Some info',
                         logo: ''
                     },
-                    about: false,
+                    about: true,
                     feedback: {
                         visible: false,
                         url: http://...
@@ -105,63 +106,24 @@
                         text: 'Go to London'
                     },
                     chat: false,
-                    comments: false
+                    comments: false,
+                    zoom: 100,
+                    compactToolbar: false,
+                    leftMenu: true,
+                    rightMenu: true,
+                    toolbar: true,
+                    header: true,
+                    autosave: true
                 },
                 plugins: {
+                    autoStartGuid: 'asc.{FFE1F462-1EA2-4391-990D-4CC84940B754}',
                     url: '../../../../sdkjs-plugins/',
-                    pluginsData: [{
-                        name : "chess (fen)",
-                        guid : "asc.{FFE1F462-1EA2-4391-990D-4CC84940B754}",
-                        baseUrl: "",
-                        variations : [
-                            {
-                                description : "chess",
-                                url         : "chess/index.html",
-
-                                icons           : ["chess/icon.png", "chess/icon@2x.png"],
-                                isViewer        : true,
-                                EditorsSupport  : ["word", "cell", "slide"],
-
-                                isVisual        : true,
-                                isModal         : true,
-                                isInsideMode    : false,
-
-                                initDataType    : "ole",
-                                initData        : "",
-
-                                isUpdateOleOnResize : true,
-
-                                buttons         : [ { text: "Ok", primary: true },
-                                                    { text: "Cancel", primary: false } ]
-                            }
-                        ]
-                    },
-                    {
-                        name : "glavred",
-                        guid : "asc.{B631E142-E40B-4B4C-90B9-2D00222A286E}",
-                        baseUrl: "",
-                        variations : [
-                            {
-                                description : "glavred",
-                                url         : "glavred/index.html",
-
-                                icons           : ["glavred/icon.png", "glavred/icon@2x.png"],
-                                isViewer        : true,
-                                EditorsSupport  : ["word", "cell", "slide"],
-
-                                isVisual        : true,
-                                isModal         : true,
-                                isInsideMode    : false,
-
-                                initDataType    : "text",
-                                initData        : "",
-
-                                isUpdateOleOnResize : false,
-
-                                buttons         : [ { text: "Ok", primary: true } ]
-                            }
-                        ]
-                    }
+                    pluginsData: [
+                        "helloworld/config.json",
+                        "chess/config.json",
+                        "speech/config.json",
+                        "clipart/config.json",
+                    ]
                 }
             },
             events: {
@@ -189,6 +151,7 @@
             editorConfig: {
                 licenseUrl: <url for license>,
                 customerId: <customer id>,
+                autostart: 'document',    // action for app's autostart. for presentations default value is 'player'
                 embedded: {
                      embedUrl: 'url',
                      fullscreenUrl: 'url',
@@ -214,8 +177,10 @@
         extend(_config, DocsAPI.DocEditor.defaultConfig);
         _config.editorConfig.canUseHistory = _config.events && !!_config.events.onRequestHistory;
         _config.editorConfig.canHistoryClose = _config.events && !!_config.events.onRequestHistoryClose;
+        _config.editorConfig.canHistoryRestore = _config.events && !!_config.events.onRequestRestore;
         _config.editorConfig.canSendEmailAddresses = _config.events && !!_config.events.onRequestEmailAddresses;
         _config.editorConfig.canRequestEditRights = _config.events && !!_config.events.onRequestEditRights;
+        _config.frameEditorId = placeholderId;
 
         var onMouseUp = function (evt) {
             _processMouse(evt);
@@ -293,7 +258,7 @@
         };
 
         var _onMessage = function(msg) {
-            if (msg) {
+            if (msg && msg.frameEditorId == placeholderId) {
                 var events = _config.events || {},
                     handler = events[msg.event],
                     res;
@@ -368,7 +333,12 @@
 
                 if (!_config.document.key) {
                     _config.document.key = 'xxxxxxxxxxxxxxxxxxxx'.replace(/[x]/g, function (c) {var r = Math.random() * 16 | 0; return r.toString(16);});
+                } else if (typeof _config.document.key !== 'string') {
+                    window.alert("The \"document.key\" parameter for the config object must be string. Please correct it.");
+                    return false;
                 }
+
+                _config.document.token = _config.token;
             }
             
             return true;
@@ -581,14 +551,14 @@
             lang: 'en',
             canCoAuthoring: true,
             customization: {
-                about: false,
+                about: true,
                 feedback: false
             }
         }
     };
 
     DocsAPI.DocEditor.version = function() {
-        return '3.0b##BN#';
+        return '4.2.7';
     };
 
     MessageDispatcher = function(fn, scope) {
@@ -689,7 +659,13 @@
                 if (config.editorConfig.customization.loaderName !== 'none') params += "&customer=" + config.editorConfig.customization.loaderName;
             } else
                 params += "&customer=ONLYOFFICE";
+            if ( (typeof(config.editorConfig.customization) == 'object') && config.editorConfig.customization.loaderLogo) {
+                if (config.editorConfig.customization.loaderLogo !== '') params += "&logo=" + config.editorConfig.customization.loaderLogo;
+            }
         }
+
+        if (config.frameEditorId)
+            params += "&frameEditorId=" + config.frameEditorId;
         
         return params;
     }

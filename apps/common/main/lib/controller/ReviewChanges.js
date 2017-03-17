@@ -99,8 +99,6 @@ define([
             this.setApi(api);
 
             if (data) {
-                this.currentUserId      =   data.config.user.id;
-                this.currentUserName    =   data.config.user.name;
                 this.sdkViewName        =   data['sdkviewname'] || this.sdkViewName;
             }
         },
@@ -201,7 +199,7 @@ define([
                         if (typeof value == 'object') {
                             _.each(value, function(obj) {
                                 if (typeof obj === 'string')
-                                    changetext += (' ' + obj);
+                                    changetext += (' ' + Common.Utils.String.htmlEncode(obj));
                                 else {
                                     switch (obj) {
                                         case 0:
@@ -220,7 +218,7 @@ define([
                                 }
                             })
                         } else if (typeof value === 'string') {
-                            changetext +=  (' ' + value);
+                            changetext +=  (' ' + Common.Utils.String.htmlEncode(value));
                         }
                     break;
                     case Asc.c_oAscRevisionsChangeType.TextRem:
@@ -228,7 +226,7 @@ define([
                         if (typeof value == 'object') {
                             _.each(value, function(obj) {
                                 if (typeof obj === 'string')
-                                    changetext += (' ' + obj);
+                                    changetext += (' ' + Common.Utils.String.htmlEncode(obj));
                                 else {
                                     switch (obj) {
                                         case 0:
@@ -247,7 +245,7 @@ define([
                                 }
                             })
                         } else if (typeof value === 'string') {
-                            changetext +=  (' ' + value);
+                            changetext +=  (' ' + Common.Utils.String.htmlEncode(value));
                         }
                     break;
                     case Asc.c_oAscRevisionsChangeType.ParaAdd:

@@ -48,8 +48,10 @@ define([
     'common/main/lib/component/Tooltip',
     'common/main/lib/controller/Fonts',
     'common/main/lib/collection/TextArt',
+    'common/main/lib/view/OpenDialog',
     'presentationeditor/main/app/collection/ShapeGroups',
-    'presentationeditor/main/app/collection/SlideLayouts'
+    'presentationeditor/main/app/collection/SlideLayouts',
+    'presentationeditor/main/app/collection/EquationGroups'
 ], function () { 'use strict';
 
     PE.Controllers.Main = Backbone.Controller.extend(_.extend((function() {
@@ -62,6 +64,13 @@ define([
             goback: '#fm-btn-back > a, #header-back > div'
         };
 
+        var mapCustomizationExtElements = {
+            toolbar: '#viewport #toolbar',
+            leftMenu: '#viewport #left-menu, #viewport #id-toolbar-full-placeholder-btn-settings, #viewport #id-toolbar-short-placeholder-btn-settings',
+            rightMenu: '#viewport #right-menu',
+            header: '#viewport #header'
+        };
+
         Common.localStorage.setId('presentation');
         Common.localStorage.setKeysFilter('pe-,asc.presentation');
         Common.localStorage.sync();
@@ -71,6 +80,7 @@ define([
             collections: [
                 'ShapeGroups',
                 'SlideLayouts',
+                'EquationGroups',
                 'Common.Collections.TextArt'
             ],
             views: [],
@@ -121,12 +131,18 @@ define([
                     this.api.asc_registerCallback('asc_onDocumentUpdateVersion',    _.bind(this.onUpdateVersion, this));
                     this.api.asc_registerCallback('asc_onDocumentName',             _.bind(this.onDocumentName, this));
                     this.api.asc_registerCallback('asc_onPrintUrl',                 _.bind(this.onPrintUrl, this));
+                    this.api.asc_registerCallback('asc_onMeta',                     _.bind(this.onMeta, this));
+                    this.api.asc_registerCallback('asc_onAdvancedOptions',          _.bind(this.onAdvancedOptions, this));
                     Common.NotificationCenter.on('api:disconnect',                  _.bind(this.onCoAuthoringDisconnect, this));
                     Common.NotificationCenter.on('goback',                          _.bind(this.goBack, this));
+
+                    this.isShowOpenDialog = false;
 
                     // Initialize api gateway
                     this.editorConfig = {};
                     this.appOptions = {};
+                    this.plugins = undefined;
+                    this.UICustomizePlugins = [];
                     Common.Gateway.on('init',           _.bind(this.loadConfig, this));
                     Common.Gateway.on('showmessage',    _.bind(this.onExternalMessage, this));
                     Common.Gateway.on('opendocument',   _.bind(this.loadDocument, this));
@@ -138,23 +154,17 @@ define([
                     // Syncronize focus with api
                     $(document.body).on('focus', 'input, textarea', function(e) {
                         if (!/area_id/.test(e.target.id)) {
-                            me.api.asc_enableKeyEvents(false);
                             if (/msg-reply/.test(e.target.className))
                                 me.dontCloseDummyComment = true;
                         }
                     });
 
-                    $("#editor_sdk").focus(function (e) {
-                        if (!me.isModalShowed)
-                            me.api.asc_enableKeyEvents(true);
-                    });
-
                     $(document.body).on('blur', 'input, textarea', function(e) {
                         if (!me.isModalShowed) {
-                             /*
-                             * TODO: Workaround bug #25004. Clipboard feature processing in sdk.
-                             */
-                            if (!(Common.Utils.isSafari && Common.Utils.isMac) && !/area_id/.test(e.target.id)) {
+                            if (!e.relatedTarget ||
+                                !/area_id/.test(e.target.id) && $(e.target).parent().find(e.relatedTarget).length<1 /* Check if focus in combobox goes from input to it's menu button or menu items */
+                                && (e.relatedTarget.localName != 'input' || !/form-control/.test(e.relatedTarget.className)) /* Check if focus goes to text input with class "form-control" */
+                                && (e.relatedTarget.localName != 'textarea' || /area_id/.test(e.relatedTarget.id))) /* Check if focus goes to textarea, but not to "area_id" */ {
                                 me.api.asc_enableKeyEvents(true);
                                 if (/msg-reply/.test(e.target.className))
                                     me.dontCloseDummyComment = false;
@@ -188,13 +198,17 @@ define([
                         },
                         'settings:unitschanged':_.bind(this.unitsChanged, this),
                         'dataview:focus': function(e){
-                            me.api.asc_enableKeyEvents(false);
                         },
                         'dataview:blur': function(e){
                             if (!me.isModalShowed) {
                                 me.api.asc_enableKeyEvents(true);
-                                me.onEditComplete();
                             }
+                        },
+                        'menu:show': function(e){
+                        },
+                        'menu:hide': function(e){
+                            if (!me.isModalShowed)
+                                me.api.asc_enableKeyEvents(true);
                         },
                         'edit:complete': _.bind(me.onEditComplete, me)
                     });
@@ -223,6 +237,8 @@ define([
                 this.appOptions.canBackToFolder = (this.editorConfig.canBackToFolder!==false) && (typeof (this.editorConfig.customization) == 'object')
                                                   && (typeof (this.editorConfig.customization.goback) == 'object') && !_.isEmpty(this.editorConfig.customization.goback.url);
                 this.appOptions.canBack         = this.editorConfig.nativeApp !== true && this.appOptions.canBackToFolder === true;
+                this.appOptions.canPlugins      = false;
+                this.plugins                    = this.editorConfig.plugins;
 
                 this.getApplication()
                     .getController('Viewport')
@@ -247,8 +263,6 @@ define([
 
                     var _user = new Asc.asc_CUserInfo();
                     _user.put_Id(this.appOptions.user.id);
-                    _user.put_FirstName(this.appOptions.user.firstname);
-                    _user.put_LastName(this.appOptions.user.lastname);
                     _user.put_FullName(this.appOptions.user.fullname);
 
                     docInfo = new Asc.asc_CDocInfo();
@@ -260,6 +274,7 @@ define([
                     docInfo.put_Options(data.doc.options);
                     docInfo.put_UserInfo(_user);
                     docInfo.put_CallbackUrl(this.editorConfig.callbackUrl);
+                    docInfo.put_Token(data.doc.token);
                     //docInfo.put_OfflineApp(this.editorConfig.nativeApp === true);
                 }
 
@@ -292,9 +307,11 @@ define([
                     this._state.lostEditingRights = !this._state.lostEditingRights;
                     this.api.asc_coAuthoringDisconnect();
                     this.getApplication().getController('LeftMenu').leftMenu.getMenu('file').panels['rights'].onLostEditRights();
+                    Common.NotificationCenter.trigger('api:disconnect');
                     if (!old_rights)
                         Common.UI.warning({
                             title: this.notcriticalErrorTitle,
+                            maxwidth: 600,
                             msg  : _.isEmpty(data.message) ? this.warnProcessRightsChange : data.message,
                             callback: function(){
                                 me._state.lostEditingRights = false;
@@ -472,7 +489,9 @@ define([
                         this.loadMask = new Common.UI.LoadMask({owner: $('#viewport')});
 
                     this.loadMask.setTitle(title);
-                    this.loadMask.show();
+
+                    if (!this.isShowOpenDialog)
+                        this.loadMask.show();
                 }
                 else {
                     this.getApplication().getController('Statusbar').setStatusCaption(text);
@@ -558,8 +577,8 @@ define([
                 me.onLongActionEnd(Asc.c_oAscAsyncActionType['BlockInteraction'], LoadingDocument);
 
                 value = Common.localStorage.getItem("pe-settings-zoom");
-                var zf = (value!==null) ? parseInt(value) : -1;
-                (zf == -1) ? this.api.zoomFitToPage() : this.api.zoom(zf);
+                var zf = (value!==null) ? parseInt(value) : (this.appOptions.customization && this.appOptions.customization.zoom ? parseInt(this.appOptions.customization.zoom) : -1);
+                (zf == -1) ? this.api.zoomFitToPage() : ((zf == -2) ? this.api.zoomFitToWidth() : this.api.zoom(zf>0 ? zf : 100));
 
                 function checkWarns() {
                     if (!window['AscDesktopEditor']) {
@@ -591,8 +610,12 @@ define([
                 me.api.SetTextBoxInputMode(value!==null && parseInt(value) == 1);
 
                 /** coauthoring begin **/
-                if (me.appOptions.isEdit && me.appOptions.canLicense && !me.appOptions.isOffline) {
+                if (me.appOptions.isEdit && me.appOptions.canLicense && !me.appOptions.isOffline && me.appOptions.canCoAuthoring) {
                     value = Common.localStorage.getItem("pe-settings-coauthmode");
+                    if (value===null && Common.localStorage.getItem("pe-settings-autosave")===null &&
+                        me.appOptions.customization && me.appOptions.customization.autosave===false) {
+                        value = 0; // use customization.autosave only when pe-settings-coauthmode and pe-settings-autosave are null
+                    }
                     me._state.fastCoauth = (value===null || parseInt(value) == 1);
                 } else
                     me._state.fastCoauth = false;
@@ -607,13 +630,18 @@ define([
                     fontsController             = application.getController('Common.Controllers.Fonts'),
                     rightmenuController         = application.getController('RightMenu'),
                     leftmenuController          = application.getController('LeftMenu'),
-                    chatController              = application.getController('Common.Controllers.Chat');
+                    chatController              = application.getController('Common.Controllers.Chat'),
+                    pluginsController           = application.getController('Common.Controllers.Plugins');
 
                 leftmenuController.getView('LeftMenu').getMenu('file').loadDocument({doc:me.document});
                 leftmenuController.setMode(me.appOptions).setApi(me.api).createDelayedElements();
 
                 chatController.setApi(this.api).setMode(this.appOptions);
                 application.getController('Common.Controllers.ExternalDiagramEditor').setApi(this.api).loadConfig({config:this.editorConfig, customization: this.editorConfig.customization});
+
+                pluginsController.setApi(me.api);
+                me.updatePlugins(me.plugins, false);
+                me.api.asc_registerCallback('asc_onPluginsInit', _.bind(me.updatePluginsList, me));
 
                 documentHolderController.setApi(me.api);
                 documentHolderController.createDelayedElements();
@@ -630,7 +658,9 @@ define([
 
                 if (me.appOptions.isEdit) {
                     value = Common.localStorage.getItem("pe-settings-autosave");
-                    value = (!me._state.fastCoauth && value!==null) ? parseInt(value) : 1;
+                    if (value===null && me.appOptions.customization && me.appOptions.customization.autosave===false)
+                        value = 0;
+                    value = (!me._state.fastCoauth && value!==null) ? parseInt(value) : (me.appOptions.canCoAuthoring ? 1 : 0);
                     me.api.asc_setAutoSaveGap(value);
 
                     if (me.needToUpdateVersion)
@@ -639,26 +669,32 @@ define([
                         if (window.styles_loaded) {
                             clearInterval(timer_sl);
 
-                            toolbarController.getView('Toolbar').createDelayedElements();
+                            toolbarController.createDelayedElements();
 
                             documentHolderController.getView('DocumentHolder').createDelayedElements();
 
-                            rightmenuController.createDelayedElements();
-
-                            me.api.asc_registerCallback('asc_onFocusObject',        _.bind(me.onFocusObject, me));
                             me.api.asc_registerCallback('asc_onUpdateLayout',       _.bind(me.fillLayoutsStore, me)); // slide layouts loading
                             me.updateThemeColors();
                             var shapes = me.api.asc_getPropertyEditorShapes();
                             if (shapes)
                                 me.fillAutoShapes(shapes[0], shapes[1]);
+                            rightmenuController.createDelayedElements();
+
+                            me.api.asc_registerCallback('asc_onFocusObject',        _.bind(me.onFocusObject, me));
+
                             me.fillTextArt(me.api.asc_getTextArtPreviews());
                             toolbarController.activateControls();
                             if (me.needToUpdateVersion)
                                 toolbarController.onApiCoAuthoringDisconnect();
                             me.api.UpdateInterfaceState();
+
+                            if (me.appOptions.canBrandingExt)
+                                Common.NotificationCenter.trigger('document:ready', 'main');
                         }
                     }, 50);
-                }
+                } else if (me.appOptions.canBrandingExt)
+                    Common.NotificationCenter.trigger('document:ready', 'main');
+
 
                 if (this.appOptions.canAnalytics && false)
                     Common.component.Analytics.initialize('UA-12442749-13', 'Presentation Editor');
@@ -707,30 +743,50 @@ define([
             },
 
             onEditorPermissions: function(params) {
-                /** coauthoring begin **/
-                this.appOptions.canCoAuthoring = true;
-                /** coauthoring end **/
+                var licType = params.asc_getLicenseType();
+                if (Asc.c_oLicenseResult.Expired === licType || Asc.c_oLicenseResult.Error === licType || Asc.c_oLicenseResult.ExpiredTrial === licType) {
+                    Common.UI.warning({
+                        title: this.titleLicenseExp,
+                        msg: this.warnLicenseExp,
+                        buttons: [],
+                        closable: false
+                    });
+                    return;
+                }
+
+                if (params.asc_getRights() !== Asc.c_oRights.Edit)
+                    this.permissions.edit = false;
+
                 this.appOptions.isOffline      = this.api.asc_isOffline();
-                this.appOptions.canLicense     = params.asc_getCanLicense ? params.asc_getCanLicense() : false;
+                this.appOptions.canLicense     = (licType === Asc.c_oLicenseResult.Success || licType === Asc.c_oLicenseResult.SuccessLimit);
+                this.appOptions.isLightVersion = params.asc_getIsLight();
+                /** coauthoring begin **/
+                this.appOptions.canCoAuthoring = !this.appOptions.isLightVersion;
+                /** coauthoring end **/
                 this.appOptions.canRequestEditRights = this.editorConfig.canRequestEditRights;
                 this.appOptions.canEdit        = this.permissions.edit !== false && // can edit
                                                  (this.editorConfig.canRequestEditRights || this.editorConfig.mode !== 'view'); // if mode=="view" -> canRequestEditRights must be defined
                 this.appOptions.isEdit         = this.appOptions.canLicense && this.appOptions.canEdit && this.editorConfig.mode !== 'view';
                 this.appOptions.canDownload    = !this.appOptions.nativeApp && this.permissions.download !== false;
                 this.appOptions.canAnalytics   = params.asc_getIsAnalyticsEnable();
-                this.appOptions.canComments    = this.appOptions.canLicense && !((typeof (this.editorConfig.customization) == 'object') && this.editorConfig.customization.comments===false);
-                this.appOptions.canChat        = this.appOptions.canLicense && !this.appOptions.isOffline && !((typeof (this.editorConfig.customization) == 'object') && this.editorConfig.customization.chat===false);
+                this.appOptions.canComments    = (licType === Asc.c_oLicenseResult.Success || licType === Asc.c_oLicenseResult.SuccessLimit) && !((typeof (this.editorConfig.customization) == 'object') && this.editorConfig.customization.comments===false);
+                this.appOptions.canChat        = (licType === Asc.c_oLicenseResult.Success || licType === Asc.c_oLicenseResult.SuccessLimit) && !this.appOptions.isOffline && !((typeof (this.editorConfig.customization) == 'object') && this.editorConfig.customization.chat===false);
                 this.appOptions.canPrint       = (this.permissions.print !== false);
+                this.appOptions.canRename      = !!this.permissions.rename;
 
-                this._state.licenseWarning = !this.appOptions.canLicense && this.appOptions.canEdit && this.editorConfig.mode !== 'view';
+                this._state.licenseWarning = (licType===Asc.c_oLicenseResult.Connections) && this.appOptions.canEdit && this.editorConfig.mode !== 'view';
 
-                this.appOptions.canBranding  = params.asc_getCanBranding() && (typeof this.editorConfig.customization == 'object');
-                if (this.appOptions.canBranding) {
-                    this.getApplication()
-                        .getController('Viewport')
-                        .getView('Common.Views.Header')
-                        .setBranding(this.editorConfig.customization);
-                }
+                var headerView = this.getApplication().getController('Viewport').getView('Common.Views.Header');
+                this.appOptions.canBranding  = (licType === Asc.c_oLicenseResult.Success) && (typeof this.editorConfig.customization == 'object');
+                if (this.appOptions.canBranding)
+                    headerView.setBranding(this.editorConfig.customization);
+
+                params.asc_getTrial() && headerView.setDeveloperMode(true);
+                this.appOptions.canRename && headerView.setCanRename(true);
+
+                this.appOptions.canBrandingExt = params.asc_getCanBranding() && (typeof this.editorConfig.customization == 'object' || this.editorConfig.plugins);
+                if (this.appOptions.canBrandingExt)
+                    this.updatePlugins(this.plugins, true);
 
                 this.applyModeCommonElements();
                 this.applyModeEditorElements();
@@ -889,8 +945,12 @@ define([
                         config.msg = this.convertationTimeoutText;
                         break;
 
-                    case Asc.c_oAscError.ID.ConvertationError:
-                        config.msg = this.convertationErrorText;
+                    case Asc.c_oAscError.ID.ConvertationOpenError:
+                        config.msg = this.openErrorText;
+                        break;
+
+                    case Asc.c_oAscError.ID.ConvertationSaveError:
+                        config.msg = this.saveErrorText;
                         break;
 
                     case Asc.c_oAscError.ID.DownloadError:
@@ -922,11 +982,11 @@ define([
                         break;
 
                     case Asc.c_oAscError.ID.VKeyEncrypt:
-                        config.msg = this.errorKeyEncrypt;
+                        config.msg = this.errorToken;
                         break;
 
                     case Asc.c_oAscError.ID.KeyExpire:
-                        config.msg = this.errorKeyExpire;
+                        config.msg = this.errorTokenExpire;
                         break;
 
                     case Asc.c_oAscError.ID.UserCountExceed:
@@ -934,7 +994,7 @@ define([
                         break;
 
                     case Asc.c_oAscError.ID.CoAuthoringDisconnect:
-                        config.msg = this.errorCoAuthoringDisconnect;
+                        config.msg = this.errorViewerDisconnect;
                         break;
 
                     case Asc.c_oAscError.ID.ConvertationPassword:
@@ -964,6 +1024,22 @@ define([
 
                     case Asc.c_oAscError.ID.Warning:
                         config.msg = this.errorConnectToServer;
+                        break;
+
+                    case Asc.c_oAscError.ID.SessionAbsolute:
+                        config.msg = this.errorSessionAbsolute;
+                        break;
+
+                    case Asc.c_oAscError.ID.SessionIdle:
+                        config.msg = this.errorSessionIdle;
+                        break;
+
+                    case Asc.c_oAscError.ID.SessionToken:
+                        config.msg = this.errorSessionToken;
+                        break;
+
+                    case Asc.c_oAscError.ID.AccessDeny:
+                        config.msg = this.errorAccessDeny;
                         break;
 
                     default:
@@ -1011,6 +1087,8 @@ define([
             onCoAuthoringDisconnect: function() {
                 // TODO: Disable all except 'Download As' and 'Print'
                 this.getApplication().getController('Viewport').getView('Viewport').setMode({isDisconnected:true});
+                this.getApplication().getController('Viewport').getView('Common.Views.Header').setCanRename(false);
+                this.appOptions.canRename = false;
                 this._state.isDisconnected = true;
 //                this.getFileMenu().setMode({isDisconnected:true});
             },
@@ -1026,7 +1104,7 @@ define([
                 function showNextTip() {
                     var str_tip = strings.shift();
                     if (str_tip) {
-                        str_tip += me.textCloseTip;
+                        str_tip += '\n' + me.textCloseTip;
                         tooltip.setTitle(str_tip);
                         tooltip.show();
                     }
@@ -1147,11 +1225,19 @@ define([
             },
 
             hidePreloader: function() {
-                if (!!this.appOptions.customization && !this.appOptions.customization.done) {
-                    this.appOptions.customization.done = true;
-                    if (!this.appOptions.isDesktopApp)
-                        this.appOptions.customization.about = true;
+                if (!this._state.customizationDone) {
+                    this._state.customizationDone = true;
+                    if (this.appOptions.customization) {
+                        if (this.appOptions.isDesktopApp)
+                            this.appOptions.customization.about = false;
+                        else if (!this.appOptions.canBrandingExt)
+                            this.appOptions.customization.about = true;
+                    }
                     Common.Utils.applyCustomization(this.appOptions.customization, mapCustomizationElements);
+                    if (this.appOptions.canBrandingExt) {
+                        Common.Utils.applyCustomization(this.appOptions.customization, mapCustomizationExtElements);
+                        Common.Utils.applyCustomizationPlugins(this.UICustomizePlugins);
+                    }
                 }
 
                 Common.NotificationCenter.trigger('layout:changed', 'main');
@@ -1284,11 +1370,8 @@ define([
             },
 
             onFocusObject: function(SelectedObjects) {
-                if (SelectedObjects.length>0) {
                     var rightpan = this.getApplication().getController('RightMenu');
-//                    var docPreview = this.getApplication().getController('Viewport').getView('DocumentPreview');
-                    if (rightpan /*&& !docPreview.isVisible()*/) rightpan.onFocusObject.call(rightpan, SelectedObjects);
-                }
+                    if (rightpan) rightpan.onFocusObject.call(rightpan, SelectedObjects);
             },
 
             _onChangeObjectLock: function() {
@@ -1431,7 +1514,7 @@ define([
             },
 
             applySettings: function() {
-                if (this.appOptions.isEdit && this.appOptions.canLicense && !this.appOptions.isOffline) {
+                if (this.appOptions.isEdit && this.appOptions.canLicense && !this.appOptions.isOffline && this.appOptions.canCoAuthoring) {
                     var value = Common.localStorage.getItem("pe-settings-coauthmode"),
                         oldval = this._state.fastCoauth;
                     this._state.fastCoauth = (value===null || parseInt(value) == 1);
@@ -1443,6 +1526,17 @@ define([
             onDocumentName: function(name) {
                 this.getApplication().getController('Viewport').getView('Common.Views.Header').setDocumentCaption(name);
                 this.updateWindowTitle(true);
+            },
+
+            onMeta: function(meta) {
+                var app = this.getApplication(),
+                    filemenu = app.getController('LeftMenu').getView('LeftMenu').getMenu('file');
+                app.getController('Viewport').getView('Common.Views.Header').setDocumentCaption(meta.title);
+                this.updateWindowTitle(true);
+                this.document.title = meta.title;
+                filemenu.loadDocument({doc:this.document});
+                filemenu.panels['info'].updateInfo(this.document);
+                Common.Gateway.metaChange(meta);
             },
 
             onPrint: function() {
@@ -1478,6 +1572,155 @@ define([
                 if (url) this.iframePrint.src = url;
             },
 
+            onAdvancedOptions: function(advOptions) {
+                var type = advOptions.asc_getOptionId(),
+                    me = this, dlg;
+                if (type == Asc.c_oAscAdvancedOptionsID.DRM) {
+                    dlg = new Common.Views.OpenDialog({
+                        type: type,
+                        handler: function (value) {
+                            me.isShowOpenDialog = false;
+                            if (me && me.api) {
+                                me.api.asc_setAdvancedOptions(type, new Asc.asc_CDRMAdvancedOptions(value));
+                                me.loadMask && me.loadMask.show();
+                            }
+                        }
+                    });
+                }
+                if (dlg) {
+                    this.isShowOpenDialog = true;
+                    this.loadMask && this.loadMask.hide();
+                    this.onLongActionEnd(Asc.c_oAscAsyncActionType.BlockInteraction, LoadingDocument);
+                    dlg.show();
+                }
+            },
+
+            updatePlugins: function(plugins, uiCustomize) { // plugins from config
+                if (!plugins) return;
+
+                var pluginsData = (uiCustomize) ? plugins.UIpluginsData : plugins.pluginsData;
+                if (!pluginsData || pluginsData.length<1) return;
+
+                var _createXMLHTTPObject = function() {
+                    var xmlhttp;
+                    try {
+                        xmlhttp = new ActiveXObject("Msxml2.XMLHTTP");
+                    }
+                    catch (e) {
+                        try {
+                            xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+                        }
+                        catch (E) {
+                            xmlhttp = false;
+                        }
+                    }
+                    if (!xmlhttp && typeof XMLHttpRequest != 'undefined') {
+                        xmlhttp = new XMLHttpRequest();
+                    }
+                    return xmlhttp;
+                };
+
+                var _getPluginJson = function(plugin) {
+                    if (!plugin) return '';
+                    try {
+                        var xhrObj = _createXMLHTTPObject();
+                        if (xhrObj && plugin) {
+                            xhrObj.open('GET', plugin, false);
+                            xhrObj.send('');
+                            var pluginJson = eval("(" + xhrObj.responseText + ")");
+                            return pluginJson;
+                        }
+                    }
+                    catch (e) {}
+                    return null;
+                };
+
+                var arr = [],
+                    baseUrl = plugins.url;
+                pluginsData.forEach(function(item){
+                    var url = item;
+                    if (!/(^https?:\/\/)/i.test(url) && !/(^www.)/i.test(item))
+                        url = baseUrl + item;
+                    var value = _getPluginJson(url);
+                    if (value) arr.push(value);
+                });
+
+                if (arr.length>0)
+                    this.updatePluginsList({
+                        autoStartGuid: plugins.autoStartGuid,
+                        url: plugins.url,
+                        pluginsData: arr
+                    }, !!uiCustomize);
+            },
+
+            updatePluginsList: function(plugins, uiCustomize) {
+                var pluginStore = this.getApplication().getCollection('Common.Collections.Plugins'),
+                    isEdit = this.appOptions.isEdit;
+                if (plugins) {
+                    var arr = [], arrUI = [];
+                    plugins.pluginsData.forEach(function(item){
+                        var variations = item.variations,
+                            variationsArr = [];
+                        variations.forEach(function(itemVar){
+                            var isSupported = false;
+                            for (var i=0; i<itemVar.EditorsSupport.length; i++){
+                                if (itemVar.EditorsSupport[i]=='slide') {
+                                    isSupported = true; break;
+                                }
+                            }
+                            if (isSupported && (isEdit || itemVar.isViewer)){
+                                var isRelativeUrl = !(/(^https?:\/\/)/i.test(itemVar.url) || /(^www.)/i.test(itemVar.url));
+                                item.isUICustomizer ? arrUI.push((isRelativeUrl) ? ((item.baseUrl ? item.baseUrl : plugins.url) + itemVar.url) : itemVar.url) :
+                                variationsArr.push(new Common.Models.PluginVariation({
+                                    description: itemVar.description,
+                                    index: variationsArr.length,
+                                    url : itemVar.url,
+                                    icons  : itemVar.icons,
+                                    isViewer: itemVar.isViewer,
+                                    EditorsSupport: itemVar.EditorsSupport,
+                                    isVisual: itemVar.isVisual,
+                                    isModal: itemVar.isModal,
+                                    isInsideMode: itemVar.isInsideMode,
+                                    initDataType: itemVar.initDataType,
+                                    initData: itemVar.initData,
+                                    isUpdateOleOnResize : itemVar.isUpdateOleOnResize,
+                                    buttons: itemVar.buttons,
+                                    size: itemVar.size,
+                                    initOnSelectionChanged: itemVar.initOnSelectionChanged,
+                                    isRelativeUrl: isRelativeUrl
+                                }));
+                            }
+                        });
+                        if (variationsArr.length>0 && !item.isUICustomizer)
+                            arr.push(new Common.Models.Plugin({
+                                name : item.name,
+                                guid: item.guid,
+                                baseUrl : item.baseUrl,
+                                variations: variationsArr,
+                                currentVariation: 0
+                            }));
+                    });
+
+                    if (uiCustomize!==false)  // from ui customizer in editor config or desktop event
+                        this.UICustomizePlugins = arrUI;
+
+                    if (!uiCustomize) {
+                        if (pluginStore) pluginStore.reset(arr);
+                        this.appOptions.pluginsPath = (plugins.url);
+                        this.appOptions.canPlugins = (arr.length>0);
+                    }
+                } else if (!uiCustomize){
+                    this.appOptions.pluginsPath = '';
+                    this.appOptions.canPlugins = false;
+                }
+                if (this.appOptions.canPlugins) {
+                    this.getApplication().getController('Common.Controllers.Plugins').setMode(this.appOptions);
+                    if (plugins.autoStartGuid)
+                        this.api.asc_pluginRun(plugins.autoStartGuid, 0, '');
+                }
+                if (!uiCustomize) this.getApplication().getController('LeftMenu').enablePlugins();
+            },
+
             // Translation
             leavePageText: 'You have unsaved changes in this document. Click \'Stay on this Page\' then \'Save\' to save them. Click \'Leave this Page\' to discard all the unsaved changes.',
             defaultTitleText: 'ONLYOFFICE Presentation Editor',
@@ -1509,7 +1752,6 @@ define([
             reloadButtonText: 'Reload Page',
             unknownErrorText: 'Unknown error.',
             convertationTimeoutText: 'Convertation timeout exceeded.',
-            convertationErrorText: 'Convertation failed.',
             downloadErrorText: 'Download failed.',
             unsupportedBrowserErrorText : 'Your browser is not supported.',
             splitMaxRowsErrorText: 'The number of rows must be less than %1',
@@ -1553,7 +1795,7 @@ define([
             txtSldLtTVertTitleAndTx: 'Vertical Title and Text',
             txtSldLtTVertTitleAndTxOverChart: 'Vertical Title and Text Over Chart',
             txtSldLtTVertTx: 'Vertical Text',
-            textLoadingDocument: 'Loading document',
+            textLoadingDocument: 'Loading presentation',
             warnBrowserZoom: 'Your browser\'s current zoom setting is not fully supported. Please reset to the default zoom by pressing Ctrl+0.',
             warnBrowserIE9: 'The application has low capabilities on IE9. Use IE10 or higher',
             loadThemeTitleText: 'Loading Theme',
@@ -1579,11 +1821,11 @@ define([
             applyChangesTextText: 'Loading data...',
             savePreparingText: 'Preparing to save',
             savePreparingTitle: 'Preparing to save. Please wait...',
-            loadingDocumentTitleText: 'Loading Document',
-            loadingDocumentTextText: 'Loading document...',
+            loadingDocumentTitleText: 'Loading presentation',
+            loadingDocumentTextText: 'Loading presentation...',
             warnProcessRightsChange: 'You have been denied the right to edit the file.',
             errorProcessSaveResult: 'Saving is failed.',
-            textCloseTip: '\nClick to close the tip.',
+            textCloseTip: 'Click to close the tip.',
             textShape: 'Shape',
             errorStockChart: 'Incorrect row order. To build a stock chart place the data on the sheet in the following order:<br> opening price, max price, min price, closing price.',
             errorDataRange: 'Incorrect data range.',
@@ -1602,7 +1844,18 @@ define([
             textBuyNow: 'Visit website',
             textNoLicenseTitle: 'ONLYOFFICE open source version',
             warnNoLicense: 'You are using an open source version of ONLYOFFICE. The version has limitations for concurrent connections to the document server (20 connections at a time).<br>If you need more please consider purchasing a commercial license.',
-            textContactUs: 'Contact sales'
+            textContactUs: 'Contact sales',
+            errorViewerDisconnect: 'Connection is lost. You can still view the document,<br>but will not be able to download or print until the connection is restored.',
+            warnLicenseExp: 'Your license has expired.<br>Please update your license and refresh the page.',
+            titleLicenseExp: 'License expired',
+            openErrorText: 'An error has occurred while opening the file',
+            saveErrorText: 'An error has occurred while saving the file',
+            errorToken: 'The document security token is not correctly formed.<br>Please contact your Document Server administrator.',
+            errorTokenExpire: 'The document security token has expired.<br>Please contact your Document Server administrator.',
+            errorSessionAbsolute: 'The document editing session has expired. Please reload the page.',
+            errorSessionIdle: 'The document has not been edited for quite a long time. Please reload the page.',
+            errorSessionToken: 'The connection to the server has been interrupted. Please reload the page.',
+            errorAccessDeny: 'You are trying to perform an action you do not have rights for.<br>Please contact your Document Server administrator.'
         }
     })(), PE.Controllers.Main || {}))
 });

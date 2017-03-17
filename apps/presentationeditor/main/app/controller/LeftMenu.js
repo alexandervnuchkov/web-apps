@@ -119,7 +119,7 @@ define([
         setApi: function(api) {
             this.api = api;
             this.api.asc_registerCallback('asc_onThumbnailsShow',        _.bind(this.onThumbnailsShow, this));
-            this.api.asc_registerCallback('asc_onCoAuthoringDisconnect', _.bind(this.onApiServerDisconnect, this));
+            this.api.asc_registerCallback('asc_onCoAuthoringDisconnect', _.bind(this.onApiServerDisconnect, this, true));
             Common.NotificationCenter.on('api:disconnect',               _.bind(this.onApiServerDisconnect, this));
             /** coauthoring begin **/
             if (this.mode.canCoAuthoring) {
@@ -155,11 +155,11 @@ define([
         createDelayedElements: function() {
             /** coauthoring begin **/
             if ( this.mode.canCoAuthoring ) {
-                this.leftMenu.btnComments[this.mode.isEdit&&this.mode.canComments ? 'show' : 'hide']();
+                this.leftMenu.btnComments[(this.mode.isEdit&&this.mode.canComments && !this.mode.isLightVersion) ? 'show' : 'hide']();
                 if (this.mode.canComments)
                     this.leftMenu.setOptionsPanel('comment', this.getApplication().getController('Common.Controllers.Comments').getView('Common.Views.Comments'));
 
-                this.leftMenu.btnChat[this.mode.canChat ? 'show' : 'hide']();
+                this.leftMenu.btnChat[(this.mode.canChat && !this.mode.isLightVersion) ? 'show' : 'hide']();
                 if (this.mode.canChat)
                     this.leftMenu.setOptionsPanel('chat', this.getApplication().getController('Common.Controllers.Chat').getView('Common.Views.Chat'));
             } else {
@@ -170,6 +170,14 @@ define([
             Common.util.Shortcuts.resumeEvents();
             this.leftMenu.btnThumbs.toggle(true);
             return this;
+        },
+
+        enablePlugins: function() {
+            if (this.mode.canPlugins) {
+                this.leftMenu.btnPlugins.show();
+                this.leftMenu.setOptionsPanel('plugins', this.getApplication().getController('Common.Controllers.Plugins').getView('Common.Views.Plugins'));
+            } else
+                this.leftMenu.btnPlugins.hide();
         },
 
         clickMenuFileItem: function(menu, action, isopts) {
@@ -187,6 +195,19 @@ define([
             case 'new':
                 if ( isopts ) close_menu = false;
                 else this.onCreateNew(undefined, 'blank');
+                break;
+            case 'rename':
+                var me = this,
+                    documentCaption = me.api.asc_getDocumentName();
+                (new Common.Views.RenameDialog({
+                    filename: documentCaption,
+                    handler: function(result, value) {
+                        if (result == 'ok' && !_.isEmpty(value.trim()) && documentCaption !== value.trim()) {
+                            Common.Gateway.requestRename(value);
+                        }
+                        Common.NotificationCenter.trigger('edit:complete', me);
+                    }
+                })).show();
                 break;
             default: close_menu = false;
             }
@@ -210,7 +231,7 @@ define([
             this.api.SetTextBoxInputMode(parseInt(value) == 1);
 
             /** coauthoring begin **/
-            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline) {
+            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline && this.mode.canCoAuthoring) {
                 value = Common.localStorage.getItem("pe-settings-coauthmode");
                 this.api.asc_SetFastCollaborative(value===null || parseInt(value) == 1);
             }
@@ -323,7 +344,7 @@ define([
 //            this.api.asc_selectSearchingResults(false);
         },
 
-        onApiServerDisconnect: function() {
+        onApiServerDisconnect: function(disableDownload) {
             this.mode.isEdit = false;
             this.leftMenu.close();
 
@@ -331,8 +352,9 @@ define([
             this.leftMenu.btnComments.setDisabled(true);
             this.leftMenu.btnChat.setDisabled(true);
             /** coauthoring end **/
+            this.leftMenu.btnPlugins.setDisabled(true);
 
-            this.leftMenu.getMenu('file').setMode({isDisconnected: true});
+            this.leftMenu.getMenu('file').setMode({isDisconnected: true, disableDownload: !!disableDownload});
             if ( this.dlgSearch ) {
                 this.leftMenu.btnSearch.toggle(false, true);
                 this.dlgSearch['hide']();
@@ -445,7 +467,14 @@ define([
                         $.fn.dropdown.Constructor.prototype.keydown.call(menu_opened[0], e);
                         return false;
                     }
-                    if (this.leftMenu.btnFile.pressed ||  this.leftMenu.btnAbout.pressed ||
+                    if (this.mode.canPlugins && this.leftMenu.panelPlugins) {
+                        menu_opened = this.leftMenu.panelPlugins.$el.find('#menu-plugin-container.open > [data-toggle="dropdown"]');
+                        if (menu_opened.length) {
+                            $.fn.dropdown.Constructor.prototype.keydown.call(menu_opened[0], e);
+                            return false;
+                        }
+                    }
+                    if (this.leftMenu.btnFile.pressed ||  this.leftMenu.btnAbout.pressed || this.leftMenu.btnPlugins.pressed ||
                         $(e.target).parents('#left-menu').length ) {
                         this.leftMenu.close();
                         Common.NotificationCenter.trigger('layout:changed', 'leftmenu');
@@ -454,13 +483,13 @@ define([
                     break;
                 /** coauthoring begin **/
                 case 'chat':
-                    if (this.mode.canCoAuthoring && this.mode.canChat && (!previewPanel || !previewPanel.isVisible())){
+                    if (this.mode.canCoAuthoring && this.mode.canChat && !this.mode.isLightVersion && (!previewPanel || !previewPanel.isVisible())){
                         Common.UI.Menu.Manager.hideAll();
                         this.leftMenu.showMenu('chat');
                     }
                     return false;
                 case 'comments':
-                    if (this.mode.canCoAuthoring && this.mode.isEdit && this.mode.canComments && (!previewPanel || !previewPanel.isVisible()) && !this._state.no_slides) {
+                    if (this.mode.canCoAuthoring && this.mode.isEdit && this.mode.canComments && !this.mode.isLightVersion && (!previewPanel || !previewPanel.isVisible()) && !this._state.no_slides) {
                         Common.UI.Menu.Manager.hideAll();
                         this.leftMenu.showMenu('comments');
                         this.getApplication().getController('Common.Controllers.Comments').onAfterShow();

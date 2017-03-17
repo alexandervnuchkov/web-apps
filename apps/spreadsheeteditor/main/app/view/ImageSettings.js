@@ -64,7 +64,6 @@ define([
         },
 
         initialize: function () {
-            var me = this;
             this._initSettings = true;
 
             this._nRatio = 1;
@@ -72,16 +71,44 @@ define([
                 Width: 0,
                 Height: 0,
                 DisabledControls: false,
-                keepRatio: false
+                keepRatio: false,
+                isOleObject: false
             };
             this.spinners = [];
             this.lockedControls = [];
             this._locked = false;
 
             this._noApply = false;
+            this._originalProps = null;
 
             this.render();
+        },
 
+        render: function () {
+            var el = $(this.el);
+            el.html(this.template({
+                scope: this
+            }));
+        },
+
+        setApi: function(api) {
+            if ( api == undefined ) return;
+            this.api = api;
+            return this;
+        },
+
+        updateMetricUnit: function() {
+            if (this.spinners) {
+                for (var i=0; i<this.spinners.length; i++) {
+                    var spinner = this.spinners[i];
+                    spinner.setDefaultUnit(Common.Utils.Metric.getCurrentMetricName());
+                    spinner.setStep(Common.Utils.Metric.getCurrentMetric()==Common.Utils.Metric.c_MetricUnits.pt ? 1 : 0.1);
+                }
+            }
+        },
+
+        createDelayedControls: function() {
+            var me = this;
             this.spnWidth = new Common.UI.MetricSpinner({
                 el: $('#image-spin-width'),
                 step: .1,
@@ -142,6 +169,11 @@ define([
             });
             this.lockedControls.push(this.btnInsertFromUrl);
 
+            this.btnEditObject = new Common.UI.Button({
+                el: $('#image-button-edit-object')
+            });
+            this.lockedControls.push(this.btnEditObject);
+
             this.spnWidth.on('change', _.bind(this.onWidthChange, this));
             this.spnHeight.on('change', _.bind(this.onHeightChange, this));
             this.btnOriginalSize.on('click', _.bind(this.setOriginalSize, this));
@@ -149,45 +181,30 @@ define([
                 if (this.api) this.api.asc_changeImageFromFile();
                 Common.NotificationCenter.trigger('edit:complete', this);
             }, this));
+            this.btnEditObject.on('click', _.bind(function(btn){
+                if (this.api) this.api.asc_startEditCurrentOleObject();
+                Common.NotificationCenter.trigger('edit:complete', this);
+            }, this));
             this.btnInsertFromUrl.on('click', _.bind(this.insertFromUrl, this));
-        },
 
-        render: function () {
-            var el = $(this.el);
-            el.html(this.template({
-                scope: this
-            }));
-        },
-
-        setApi: function(api) {
-            if ( api == undefined ) return;
-            this.api = api;
-            return this;
-        },
-
-        updateMetricUnit: function() {
-            if (this.spinners) {
-                for (var i=0; i<this.spinners.length; i++) {
-                    var spinner = this.spinners[i];
-                    spinner.setDefaultUnit(Common.Utils.Metric.getCurrentMetricName());
-                    spinner.setStep(Common.Utils.Metric.getCurrentMetric()==Common.Utils.Metric.c_MetricUnits.pt ? 1 : 0.1);
-                }
-            }
+            this.lblReplace = $('#image-lbl-replace');
         },
 
         createDelayedElements: function() {
+            this.createDelayedControls();
             this.updateMetricUnit();
+            this._initSettings = false;
         },
 
         ChangeSettings: function(props) {
-            if (this._initSettings) {
+            if (this._initSettings)
                 this.createDelayedElements();
-                this._initSettings = false;
-            }
 
             this.disableControls(this._locked);
 
             if (props ){
+                this._originalProps = new Asc.asc_CImgProperty(props);
+                
                 var value = props.asc_getWidth();
                 if ( Math.abs(this._state.Width-value)>0.001 ||
                     (this._state.Width===null || value===null)&&(this._state.Width!==value)) {
@@ -212,6 +229,24 @@ define([
                 }
 
                 this.btnOriginalSize.setDisabled(props.asc_getImageUrl()===null || props.asc_getImageUrl()===undefined || this._locked);
+
+                var pluginGuid = props.asc_getPluginGuid();
+                value = (pluginGuid !== null && pluginGuid !== undefined);
+                if (this._state.isOleObject!==value) {
+                    this.btnInsertFromUrl.setVisible(!value);
+                    this.btnInsertFromFile.setVisible(!value);
+                    this.btnEditObject.setVisible(value);
+                    this.lblReplace.text(value ? this.textEditObject : this.textInsert);
+                    this._state.isOleObject=value;
+                }
+
+                if (this._state.isOleObject) {
+                    var plugin = SSE.getCollection('Common.Collections.Plugins').findWhere({guid: pluginGuid});
+                    this.btnEditObject.setDisabled(plugin===null || plugin ===undefined || this._locked);
+                } else {
+                    this.btnInsertFromUrl.setDisabled(pluginGuid===null || this._locked);
+                    this.btnInsertFromFile.setDisabled(pluginGuid===null || this._locked);
+                }
             }
         },
 
@@ -294,6 +329,8 @@ define([
         },
 
         disableControls: function(disable) {
+            if (this._initSettings) return;
+            
             if (this._state.DisabledControls!==disable) {
                 this._state.DisabledControls = disable;
                 _.each(this.lockedControls, function(item) {
@@ -307,8 +344,10 @@ define([
         textWidth:      'Width',
         textHeight:     'Height',
         textOriginalSize: 'Default Size',
-        textInsert:     'Insert Image',
+        textInsert:     'Replace Image',
         textFromUrl:    'From URL',
-        textFromFile:   'From File'
+        textFromFile:   'From File',
+        textEditObject: 'Edit Object',
+        textEdit:       'Edit'
     }, SSE.Views.ImageSettings || {}));
 });

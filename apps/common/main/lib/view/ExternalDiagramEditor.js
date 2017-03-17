@@ -48,7 +48,7 @@ define([
             _.extend(_options,  {
                 title: this.textTitle,
                 width: 910,
-                height: (window.innerHeight-700)<0 ? window.innerHeight: 700,
+                height: (Common.Utils.innerHeight()-700)<0 ? Common.Utils.innerHeight(): 700,
                 cls: 'advanced-settings-dlg',
                 header: true,
                 toolclose: 'hide',
@@ -62,7 +62,7 @@ define([
                 '<div class="separator horizontal"/>',
                 '<div class="footer" style="text-align: center;">',
                     '<button id="id-btn-diagram-editor-apply" class="btn normal dlg-btn primary custom" result="ok" style="margin-right: 10px;">' + this.textSave + '</button>',
-                    '<button id="id-btn-diagram-editor-cancel" class="btn normal dlg-btn disabled" result="cancel">' + this.textClose + '</button>',
+                    '<button id="id-btn-diagram-editor-cancel" class="btn normal dlg-btn" result="cancel">' + this.textClose + '</button>',
                 '</div>'
             ].join('');
 
@@ -134,8 +134,8 @@ define([
                 this.$window.find('> .body').css('height', height-header_height);
                 this.$window.find('> .body > .box').css('height', height-85);
 
-                var top  = ((parseInt(window.innerHeight) - parseInt(height)) / 2) * 0.9;
-                var left = (parseInt(window.innerWidth) - parseInt(this.initConfig.width)) / 2;
+                var top  = ((Common.Utils.innerHeight() - parseInt(height)) / 2) * 0.9;
+                var left = (Common.Utils.innerWidth() - parseInt(this.initConfig.width)) / 2;
 
                 this.$window.css('left',left);
                 this.$window.css('top',top);

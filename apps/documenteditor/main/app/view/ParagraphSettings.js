@@ -67,22 +67,21 @@ define([
         },
 
         initialize: function () {
-            var me = this;
             this._initSettings = true;
 
             this._state = {
-                LineRuleIdx: 1,
-                LineHeight: 1.5,
-                LineSpacingBefore: 0,
-                LineSpacingAfter: 0.35,
+                LineRuleIdx: null,
+                LineHeight: null,
+                LineSpacingBefore: null,
+                LineSpacingAfter: null,
                 AddInterval: false,
                 BackColor: '#000000',
-                DisabledControls: false,
+                DisabledControls: true,
                 HideTextOnlySettings: false
             };
             this.spinners = [];
             this.lockedControls = [];
-            this._locked = false;
+            this._locked = true;
             this.isChart = false;
 
             this.render();
@@ -99,19 +98,21 @@ define([
                 cls: 'input-group-nr',
                 menuStyle: 'min-width: 85px;',
                 editable: false,
-                data: this._arrLineRule
+                data: this._arrLineRule,
+                disabled: this._locked
             });
-            this.cmbLineRule.setValue(this._arrLineRule[ this._state.LineRuleIdx].value);
+            this.cmbLineRule.setValue('');
             this.lockedControls.push(this.cmbLineRule);
 
             this.numLineHeight = new Common.UI.MetricSpinner({
                 el: $('#paragraph-spin-line-height'),
                 step: .01,
                 width: 85,
-                value: '1.5',
+                value: '',
                 defaultUnit : "",
                 maxValue: 132,
-                minValue: 0.5
+                minValue: 0.5,
+                disabled: this._locked
             });
             this.lockedControls.push(this.numLineHeight);
 
@@ -119,12 +120,13 @@ define([
                 el: $('#paragraph-spin-spacing-before'),
                 step: .1,
                 width: 85,
-                value: '0 cm',
+                value: '',
                 defaultUnit : "cm",
                 maxValue: 55.88,
                 minValue: 0,
                 allowAuto   : true,
-                autoText    : this.txtAutoText
+                autoText    : this.txtAutoText,
+                disabled: this._locked
             });
             this.spinners.push(this.numSpacingBefore);
             this.lockedControls.push(this.numSpacingBefore);
@@ -133,58 +135,29 @@ define([
                 el: $('#paragraph-spin-spacing-after'),
                 step: .1,
                 width: 85,
-                value: '0.35 cm',
+                value: '',
                 defaultUnit : "cm",
                 maxValue: 55.88,
                 minValue: 0,
                 allowAuto   : true,
-                autoText    : this.txtAutoText
+                autoText    : this.txtAutoText,
+                disabled: this._locked
             });
             this.spinners.push(this.numSpacingAfter);
             this.lockedControls.push(this.numSpacingAfter);
 
             this.chAddInterval = new Common.UI.CheckBox({
                 el: $('#paragraph-checkbox-add-interval'),
-                labelText: this.strSomeParagraphSpace
+                labelText: this.strSomeParagraphSpace,
+                disabled: this._locked
             });
             this.lockedControls.push(this.chAddInterval);
 
             this.btnColor = new Common.UI.ColorButton({
                 style: "width:45px;",
-                menu        : new Common.UI.Menu({
-                    items: [
-                        { template: _.template('<div id="paragraph-color-menu" style="width: 165px; height: 220px; margin: 10px;"></div>') },
-                        { template: _.template('<a id="paragraph-color-new" style="padding-left:12px;">' + me.textNewColor + '</a>') }
-                    ]
-                })
+                disabled: this._locked,
+                menu        : true
             });
-
-            this.btnColor.on('render:after', function(btn) {
-                me.mnuColorPicker = new Common.UI.ThemeColorPalette({
-                    el: $('#paragraph-color-menu'),
-                    dynamiccolors: 10,
-                    colors: [
-                        me.textThemeColors, '-', {color: '3366FF', effectId: 1}, {color: '0000FF', effectId: 2}, {color: '000090', effectId: 3}, {color: '660066', effectId: 4}, {color: '800000', effectId: 5},
-                        {color: 'FF0000', effectId: 1}, {color: 'FF6600', effectId: 1}, {color: 'FFFF00', effectId: 2}, {color: 'CCFFCC', effectId: 3}, {color: '008000', effectId: 4},
-                        '-',
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2}, {color: '000000', effectId: 3}, {color: 'FFFFFF', effectId: 4}, {color: '000000', effectId: 5},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        {color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1}, {color: 'FFFFFF', effectId: 2},{color: '000000', effectId: 1},
-                        '-', '--', '-', me.textStandartColors, '-', 'transparent',
-                        '5301B3', '980ABD', 'B2275F', 'F83D26', 'F86A1D', 'F7AC16', 'F7CA12', 'FAFF44', 'D6EF39',
-                        '-', '--'
-                    ]
-                });
-                me.mnuColorPicker.on('select', _.bind(me.onColorPickerSelect, me));
-            });
-
             this.btnColor.render( $('#paragraph-color-btn'));
             this.lockedControls.push(this.btnColor);
 
@@ -206,6 +179,7 @@ define([
             }));
 
             this.linkAdvanced = $('#paragraph-advanced-link');
+            this.linkAdvanced.toggleClass('disabled', this._locked);
         },
 
         setApi: function(api) {
@@ -302,10 +276,8 @@ define([
         },
 
         ChangeSettings: function(prop) {
-            if (this._initSettings) {
+            if (this._initSettings)
                 this.createDelayedElements();
-                this._initSettings = false;
-            }
 
             this.disableControls(this._locked);
             this.hideTextOnlySettings(this.isChart);
@@ -421,7 +393,9 @@ define([
         },
 
         createDelayedElements: function() {
+            this.UpdateThemeColors();
             this.updateMetricUnit();
+            this._initSettings = false;
         },
 
         openAdvancedSettings: function(e) {
@@ -467,8 +441,20 @@ define([
         },
 
         UpdateThemeColors: function() {
-            if (this.mnuColorPicker)
-                this.mnuColorPicker.updateColors(Common.Utils.ThemeColor.getEffectColors(), Common.Utils.ThemeColor.getStandartColors());
+            if (!this.mnuColorPicker) {
+                this.btnColor.setMenu( new Common.UI.Menu({
+                    items: [
+                        { template: _.template('<div id="paragraph-color-menu" style="width: 169px; height: 220px; margin: 10px;"></div>') },
+                        { template: _.template('<a id="paragraph-color-new" style="padding-left:12px;">' + this.textNewColor + '</a>') }
+                    ]
+                }));
+                this.mnuColorPicker = new Common.UI.ThemeColorPalette({
+                    el: $('#paragraph-color-menu'),
+                    transparent: true
+                });
+                this.mnuColorPicker.on('select', _.bind(this.onColorPickerSelect, this));
+            }
+            this.mnuColorPicker.updateColors(Common.Utils.ThemeColor.getEffectColors(), Common.Utils.ThemeColor.getStandartColors());
         },
 
         onHideMenus: function(e){
@@ -507,8 +493,6 @@ define([
         textAdvanced:           'Show advanced settings',
         textAt:                 'At',
         txtAutoText:            'Auto',
-        textThemeColors:        'Theme Colors',
-        textStandartColors:     'Standart Colors',
         textBackColor:          'Background color',
         textNewColor:           'Add New Custom Color'
     }, DE.Views.ParagraphSettings || {}));

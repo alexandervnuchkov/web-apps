@@ -181,8 +181,8 @@ define([
             }
 
             if (open) {
-                $('#id-empty-settings').parent().css("display", "inline-block" );
-                $('#id-empty-settings').addClass("active");
+                $('#id-slide-settings').parent().css("display", "inline-block" );
+                $('#id-slide-settings').addClass("active");
             }
             
             this.trigger('render:after', this);
@@ -254,7 +254,7 @@ define([
         },
 
         GetActivePane: function() {
-            return (this.minimizedMode) ? null : $(".settings-panel.active")[0].id;
+            return (this.minimizedMode) ? null : this.$el.find(".settings-panel.active")[0].id;
         },
 
         SetDisabled: function(id, disabled, all) {
@@ -277,7 +277,7 @@ define([
         clearSelection: function() {
             var target_pane = $(".right-panel");
             target_pane.find('> .active').removeClass('active');
-            _.each(this._settings, function(item){
+            this._settings.forEach(function(item){
                 if (item.btn.isActive())
                     item.btn.toggle(false, true);
             });

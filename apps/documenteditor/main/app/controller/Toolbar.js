@@ -46,8 +46,8 @@ define([
     'common/main/lib/view/CopyWarningDialog',
     'common/main/lib/view/ImageFromUrlDialog',
     'common/main/lib/view/InsertTableDialog',
+    'common/main/lib/util/define',
     'documenteditor/main/app/view/Toolbar',
-    'documenteditor/main/app/util/define',
     'documenteditor/main/app/view/HyperlinkSettingsDialog',
     'documenteditor/main/app/view/DropcapSettingsAdvanced',
     'documenteditor/main/app/view/MailMergeRecepients',
@@ -166,7 +166,7 @@ define([
             // Create toolbar view
             this.toolbar = this.createView('Toolbar');
 
-            this.toolbar.on('render:after', _.bind(this.onToolbarAfterRender, this));
+            // this.toolbar.on('render:after', _.bind(this.onToolbarAfterRender, this));
         },
 
         onToolbarAfterRender: function(toolbar) {
@@ -240,7 +240,7 @@ define([
             toolbar.btnDropCap.menu.on('item:click',                    _.bind(this.onDropCapSelect, this));
             toolbar.mnuDropCapAdvanced.on('click',                      _.bind(this.onDropCapAdvancedClick, this));
             toolbar.btnColumns.menu.on('item:click',                    _.bind(this.onColumnsSelect, this));
-            toolbar.btnPageOrient.on('toggle',                          _.bind(this.onPageOrientToggle, this));
+            toolbar.btnPageOrient.menu.on('item:click',                 _.bind(this.onPageOrientSelect, this));
             toolbar.btnPageMargins.menu.on('item:click',                _.bind(this.onPageMarginsSelect, this));
             toolbar.btnClearStyle.on('click',                           _.bind(this.onClearStyleClick, this));
             toolbar.btnCopyStyle.on('toggle',                           _.bind(this.onCopyStyleToggle, this));
@@ -252,6 +252,7 @@ define([
             toolbar.mnuPageNumberPosPicker.on('item:click',             _.bind(this.onInsertPageNumberClick, this));
             toolbar.btnEditHeader.menu.on('item:click',                 _.bind(this.onEditHeaderFooterClick, this));
             toolbar.mnuPageNumCurrentPos.on('click',                    _.bind(this.onPageNumCurrentPosClick, this));
+            toolbar.mnuInsertPageCount.on('click',                      _.bind(this.onInsertPageCountClick, this));
             toolbar.listStyles.on('click',                              _.bind(this.onListStyleSelect, this));
             toolbar.listStyles.on('contextmenu',                        _.bind(this.onListStyleContextMenu, this));
             toolbar.styleMenu.on('hide:before',                         _.bind(this.onListStyleBeforeHide, this));
@@ -303,7 +304,7 @@ define([
             this.api.asc_registerCallback('asc_onMarkerFormatChanged',  _.bind(this.onApiStartHighlight, this));
             this.api.asc_registerCallback('asc_onTextHighLight',        _.bind(this.onApiHighlightColor, this));
             this.api.asc_registerCallback('asc_onInitEditorStyles',     _.bind(this.onApiInitEditorStyles, this));
-            this.api.asc_registerCallback('asc_onCoAuthoringDisconnect',_.bind(this.onApiCoAuthoringDisconnect, this));
+            this.api.asc_registerCallback('asc_onCoAuthoringDisconnect',_.bind(this.onApiCoAuthoringDisconnect, this, true));
             Common.NotificationCenter.on('api:disconnect',              _.bind(this.onApiCoAuthoringDisconnect, this));
             this.api.asc_registerCallback('asc_onCanCopyCut',           _.bind(this.onApiCanCopyCut, this));
             this.api.asc_registerCallback('asc_onMathTypes',            _.bind(this.onMathTypes, this));
@@ -723,7 +724,7 @@ define([
 
         onApiPageOrient: function(isportrait) {
             if (this._state.pgorient !== isportrait) {
-                this.toolbar.btnPageOrient.toggle(!isportrait, true);
+                this.toolbar.btnPageOrient.menu.items[isportrait ? 0 : 1].setChecked(true);
                 this._state.pgorient = isportrait;
             }
         },
@@ -765,7 +766,7 @@ define([
         onApiZoomChange: function(percent, type) {
             this.toolbar.btnFitPage.setChecked(type == 2, true);
             this.toolbar.btnFitWidth.setChecked(type == 1, true);
-
+            this.toolbar.mnuZoom.options.value = percent;
             $('.menu-zoom .zoom', this.toolbar.el).html(percent + '%');
         },
 
@@ -873,29 +874,21 @@ define([
         onCopyPaste: function(copy, e) {
             var me = this;
             if (me.api) {
-                if (typeof window['AscDesktopEditor'] === 'object') {           // AscDesktopEditor object may exists in desktop version
-                    copy ? me.api.Copy() : me.api.Paste();
-//                    window['AscDesktopEditor'][copy ? 'Copy' : 'Paste']();      // desktop editor's methods
-                } else {
+                var res = (copy) ? me.api.Copy() : me.api.Paste();
+                if (!res) {
                     var value = Common.localStorage.getItem("de-hide-copywarning");
                     if (!(value && parseInt(value) == 1)) {
                         (new Common.Views.CopyWarningDialog({
                             handler: function(dontshow) {
-                                copy ? me.api.Copy() : me.api.Paste();
                                 if (dontshow) Common.localStorage.setItem("de-hide-copywarning", 1);
                                 Common.NotificationCenter.trigger('edit:complete', me.toolbar);
                             }
                         })).show();
-                    } else {
-                        copy ? me.api.Copy() : me.api.Paste();
-                        Common.NotificationCenter.trigger('edit:complete', me.toolbar);
                     }
-                }
-
-                Common.component.Analytics.trackEvent('ToolBar', 'Copy Warning');
-            } else {
-                Common.NotificationCenter.trigger('edit:complete', me.toolbar);
+                } else
+                    Common.component.Analytics.trackEvent('ToolBar', 'Copy Warning');
             }
+            Common.NotificationCenter.trigger('edit:complete', me.toolbar);
         },
 
         onIncrease: function(e) {
@@ -1107,7 +1100,6 @@ define([
                             msg: this.textFontSizeErr,
                             callback: function() {
                                 _.defer(function(btn) {
-                                    me.api.asc_enableKeyEvents(false);
                                     $('input', combo.cmpEl).focus();
                                 })
                             }
@@ -1387,10 +1379,11 @@ define([
             Common.NotificationCenter.trigger('edit:complete', this.toolbar, this.toolbar.btnInsertShape);
         },
 
-        onPageOrientToggle: function(btn, state, e) {
+        onPageOrientSelect: function(menu, item) {
             this._state.pgorient = undefined;
-            if (this.api)
-                this.api.change_PageOrient(!state);
+            if (this.api && item.checked) {
+                this.api.change_PageOrient(item.value);
+            }
 
             Common.NotificationCenter.trigger('edit:complete', this.toolbar);
             Common.component.Analytics.trackEvent('ToolBar', 'Page Orientation');
@@ -1706,6 +1699,14 @@ define([
             Common.NotificationCenter.trigger('edit:complete', this.toolbar);
             Common.component.Analytics.trackEvent('ToolBar', 'Page Number');
         },
+        
+        onInsertPageCountClick: function(item, e) {
+            if (this.api)
+                this.api.asc_AddPageCount();
+
+            Common.NotificationCenter.trigger('edit:complete', this.toolbar);
+            Common.component.Analytics.trackEvent('ToolBar', 'Pages Count');
+        },
 
         onEditHeaderFooterClick: function(menu, item) {
             if (this.api) {
@@ -1767,11 +1768,11 @@ define([
             menu.items[3].setDisabled(isAllDefailtNotModifaed);
             menu.items[4].setDisabled(isAllCustomDeleted);
 
-            var top = e.clientY;
+            var top = e.clientY*Common.Utils.zoom();
             if ($('#header-container').is(":visible")) {
                 top -= $('#header-container').height()
             }
-            showPoint = [e.clientX, top];
+            showPoint = [e.clientX*Common.Utils.zoom(), top];
 
             if (record != undefined) {
                 //itemMenu
@@ -2197,10 +2198,13 @@ define([
         },
 
         fillEquations: function() {
+            if (!this.toolbar.btnInsertEquation.rendered || this.toolbar.btnInsertEquation.menu.items.length>0) return;
+
             var me = this, equationsStore = this.getApplication().getCollection('EquationGroups');
 
             me.equationPickers = [];
-
+            me.toolbar.btnInsertEquation.menu.removeAll();
+            
             for (var i = 0; i < equationsStore.length; ++i) {
                 var equationGroup = equationsStore.at(i);
 
@@ -2287,32 +2291,32 @@ define([
 
             // [translate, count cells, scroll]
 
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Symbol       ] = [this.textSymbols, 11];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Fraction     ] = [this.textFraction, 4];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Script       ] = [this.textScript, 4];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Radical      ] = [this.textRadical, 4];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Integral     ] = [this.textIntegral, 3, true];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.LargeOperator] = [this.textLargeOperator, 5, true];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Bracket      ] = [this.textBracket, 4, true];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Function     ] = [this.textFunction, 3, true];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Accent       ] = [this.textAccent, 4];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.LimitLog     ] = [this.textLimitAndLog, 3];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Operator     ] = [this.textOperator, 4];
-            c_oAscMathMainTypeStrings[DE.define.c_oAscMathMainType.Matrix       ] = [this.textMatrix, 4, true];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Symbol       ] = [this.textSymbols, 11];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Fraction     ] = [this.textFraction, 4];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Script       ] = [this.textScript, 4];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Radical      ] = [this.textRadical, 4];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Integral     ] = [this.textIntegral, 3, true];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.LargeOperator] = [this.textLargeOperator, 5, true];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Bracket      ] = [this.textBracket, 4, true];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Function     ] = [this.textFunction, 3, true];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Accent       ] = [this.textAccent, 4];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.LimitLog     ] = [this.textLimitAndLog, 3];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Operator     ] = [this.textOperator, 4];
+            c_oAscMathMainTypeStrings[Common.define.c_oAscMathMainType.Matrix       ] = [this.textMatrix, 4, true];
 
             // equations sub groups
 
             // equations types
 
             var translationTable = {}, name = '', translate = '';
-            for (name in DE.define.c_oAscMathType) {
-                if (DE.define.c_oAscMathType.hasOwnProperty(name)) {
+            for (name in Common.define.c_oAscMathType) {
+                if (Common.define.c_oAscMathType.hasOwnProperty(name)) {
                     var arr = name.split('_');
                     if (arr.length==2 && arr[0]=='Symbol') {
                         translate = 'txt' + arr[0] + '_' + arr[1].toLocaleLowerCase();
                     } else
                         translate = 'txt' + name;
-                    translationTable[DE.define.c_oAscMathType[name]] = this[translate];
+                    translationTable[Common.define.c_oAscMathType[name]] = this[translate];
                 }
             }
 
@@ -2388,8 +2392,9 @@ define([
         },
 
         fillTextArt: function() {
-            var me = this;
+            if (!this.toolbar.btnInsertText.rendered) return;
             
+            var me = this;
             if (this.toolbar.mnuTextArtPicker) {
                 var models = this.getApplication().getCollection('Common.Collections.TextArt').models,
                     count = this.toolbar.mnuTextArtPicker.store.length;
@@ -2549,7 +2554,7 @@ define([
                 me.api.SetMarkerFormat(true, true, parseInt(r, 16), parseInt(g, 16), parseInt(b, 16));
             }
 
-            Common.NotificationCenter.trigger('edit:complete', me.toolbar);
+            Common.NotificationCenter.trigger('edit:complete', me.toolbar, me.toolbar.btnHighlightColor);
             Common.component.Analytics.trackEvent('ToolBar', 'Highlight Color');
         },
 
@@ -2587,8 +2592,8 @@ define([
             });
         },
 
-        onApiCoAuthoringDisconnect: function() {
-            this.toolbar.setMode({isDisconnected:true});
+        onApiCoAuthoringDisconnect: function(disableDownload) {
+            this.toolbar.setMode({isDisconnected:true, disableDownload: !!disableDownload});
             this.editMode = false;
         },
 
@@ -2633,6 +2638,11 @@ define([
             });
 
             me._mailMergeDlg.show();
+        },
+
+        createDelayedElements: function() {
+            this.toolbar.createDelayedElements();
+            this.onToolbarAfterRender(this.toolbar);
         },
 
         textEmptyImgUrl                            : 'You need to specify image URL.',

@@ -127,7 +127,7 @@ define([
         setApi: function(api) {
             this.api = api;
             this.api.asc_registerCallback('asc_onRenameCellTextEnd',    _.bind(this.onRenameText, this));
-            this.api.asc_registerCallback('asc_onCoAuthoringDisconnect', _.bind(this.onApiServerDisconnect, this));
+            this.api.asc_registerCallback('asc_onCoAuthoringDisconnect', _.bind(this.onApiServerDisconnect, this, true));
             Common.NotificationCenter.on('api:disconnect',              _.bind(this.onApiServerDisconnect, this));
             /** coauthoring begin **/
             if (this.mode.canCoAuthoring) {
@@ -163,11 +163,11 @@ define([
         createDelayedElements: function() {
             /** coauthoring begin **/
             if ( this.mode.canCoAuthoring ) {
-                this.leftMenu.btnComments[this.mode.isEdit&&this.mode.canComments ? 'show' : 'hide']();
+                this.leftMenu.btnComments[(this.mode.isEdit&&this.mode.canComments && !this.mode.isLightVersion) ? 'show' : 'hide']();
                 if (this.mode.canComments)
                     this.leftMenu.setOptionsPanel('comment', this.getApplication().getController('Common.Controllers.Comments').getView('Common.Views.Comments'));
 
-                this.leftMenu.btnChat[this.mode.canChat ? 'show' : 'hide']();
+                this.leftMenu.btnChat[(this.mode.canChat && !this.mode.isLightVersion) ? 'show' : 'hide']();
                 if (this.mode.canChat)
                     this.leftMenu.setOptionsPanel('chat', this.getApplication().getController('Common.Controllers.Chat').getView('Common.Views.Chat'));
             } else {
@@ -179,6 +179,14 @@ define([
             if (!this.mode.isEditMailMerge && !this.mode.isEditDiagram)
                 Common.NotificationCenter.on('cells:range',   _.bind(this.onCellsRange, this));
             return this;
+        },
+
+        enablePlugins: function() {
+            if (this.mode.canPlugins) {
+                this.leftMenu.btnPlugins.show();
+                this.leftMenu.setOptionsPanel('plugins', this.getApplication().getController('Common.Controllers.Plugins').getView('Common.Views.Plugins'));
+            } else
+                this.leftMenu.btnPlugins.hide();
         },
 
         clickMenuFileItem: function(menu, action, isopts) {
@@ -196,6 +204,19 @@ define([
             case 'new':
                 if ( isopts ) close_menu = false;
                 else this.onCreateNew(undefined, 'blank');
+                break;
+            case 'rename':
+                var me = this,
+                    documentCaption = me.api.asc_getDocumentName();
+                (new Common.Views.RenameDialog({
+                    filename: documentCaption,
+                    handler: function(result, value) {
+                        if (result == 'ok' && !_.isEmpty(value.trim()) && documentCaption !== value.trim()) {
+                            Common.Gateway.requestRename(value);
+                        }
+                        Common.NotificationCenter.trigger('edit:complete', me);
+                    }
+                })).show();
                 break;
             default: close_menu = false;
             }
@@ -236,7 +257,7 @@ define([
             (!(value!==null && parseInt(value) == 0)) ? this.api.asc_showComments() : this.api.asc_hideComments();
 //            this.getApplication().getController('DocumentHolder').setLiveCommenting(!(value!==null && parseInt(value) == 0));
 
-            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline) {
+            if (this.mode.isEdit && this.mode.canLicense && !this.mode.isOffline && this.mode.canCoAuthoring) {
                 value = Common.localStorage.getItem("sse-settings-coauthmode");
                 this.api.asc_SetFastCollaborative(value===null || parseInt(value) == 1);
             }
@@ -488,7 +509,7 @@ define([
             }
         },
 
-        onApiServerDisconnect: function() {
+        onApiServerDisconnect: function(disableDownload) {
             this.mode.isEdit = false;
             this.leftMenu.close();
 
@@ -496,8 +517,9 @@ define([
             this.leftMenu.btnComments.setDisabled(true);
             this.leftMenu.btnChat.setDisabled(true);
             /** coauthoring end **/
+            this.leftMenu.btnPlugins.setDisabled(true);
 
-            this.leftMenu.getMenu('file').setMode({isDisconnected: true});
+            this.leftMenu.getMenu('file').setMode({isDisconnected: true, disableDownload: !!disableDownload});
             if ( this.dlgSearch ) {
                 this.leftMenu.btnSearch.toggle(false, true);
                 this.dlgSearch['hide']();
@@ -534,7 +556,6 @@ define([
                     this.getApplication().getController('Common.Controllers.Comments').onAfterShow();
                 }
 
-                this.api.asc_enableKeyEvents(!state);
                 if (!state) $(this.leftMenu.btnComments.el).blur();
             }
         },
@@ -605,8 +626,15 @@ define([
                         $.fn.dropdown.Constructor.prototype.keydown.call(menu_opened[0], e);
                         return false;
                     }
+                    if (this.mode.canPlugins && this.leftMenu.panelPlugins && this.api.isCellEdited!==true) {
+                        menu_opened = this.leftMenu.panelPlugins.$el.find('#menu-plugin-container.open > [data-toggle="dropdown"]');
+                        if (menu_opened.length) {
+                            $.fn.dropdown.Constructor.prototype.keydown.call(menu_opened[0], e);
+                            return false;
+                        }
+                    }
                     if (this.leftMenu.btnFile.pressed ||  this.leftMenu.btnAbout.pressed ||
-                        $(e.target).parents('#left-menu').length && this.api.isCellEdited!==true) {
+                        ($(e.target).parents('#left-menu').length || this.leftMenu.btnPlugins.pressed || this.leftMenu.btnComments.pressed) && this.api.isCellEdited!==true) {
                         this.leftMenu.close();
                         Common.NotificationCenter.trigger('layout:changed', 'leftmenu');
                         return false;
@@ -621,13 +649,13 @@ define([
                     break;
                 /** coauthoring begin **/
                 case 'chat':
-                    if (this.mode.canCoAuthoring && this.mode.canChat) {
+                    if (this.mode.canCoAuthoring && this.mode.canChat && !this.mode.isLightVersion) {
                         Common.UI.Menu.Manager.hideAll();
                         this.leftMenu.showMenu('chat');
                     }
                     return false;
                 case 'comments':
-                    if (this.mode.canCoAuthoring && this.mode.isEdit && this.mode.canComments) {
+                    if (this.mode.canCoAuthoring && this.mode.isEdit && this.mode.canComments && !this.mode.isLightVersion) {
                         Common.UI.Menu.Manager.hideAll();
                         this.leftMenu.showMenu('comments');
                         this.getApplication().getController('Common.Controllers.Comments').onAfterShow();
@@ -643,6 +671,10 @@ define([
             this.leftMenu.btnFile.setDisabled(isRangeSelection);
             this.leftMenu.btnAbout.setDisabled(isRangeSelection);
             this.leftMenu.btnSearch.setDisabled(isRangeSelection);
+            if (this.mode.canPlugins && this.leftMenu.panelPlugins) {
+                this.leftMenu.panelPlugins.setLocked(isRangeSelection);
+                this.leftMenu.panelPlugins.disableControls(isRangeSelection);
+            }
         },
 
         onApiEditCell: function(state) {
@@ -652,6 +684,10 @@ define([
             this.leftMenu.btnFile.setDisabled(isEditFormula);
             this.leftMenu.btnAbout.setDisabled(isEditFormula);
             this.leftMenu.btnSearch.setDisabled(isEditFormula);
+            if (this.mode.canPlugins && this.leftMenu.panelPlugins) {
+                this.leftMenu.panelPlugins.setLocked(isEditFormula);
+                this.leftMenu.panelPlugins.disableControls(isEditFormula);
+            }
         },
 
         textNoTextFound        : 'Text not found',

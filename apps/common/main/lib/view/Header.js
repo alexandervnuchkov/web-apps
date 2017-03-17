@@ -46,13 +46,15 @@ Common.Views = Common.Views || {};
 define([
     'backbone',
     'text!common/main/lib/template/Header.template',
-    'core'
+    'core',
+    'common/main/lib/view/RenameDialog'
 ], function (Backbone, headerTemplate) { 'use strict';
 
     Common.Views.Header =  Backbone.View.extend(_.extend({
         options : {
             branding: {},
             headerCaption: 'Default Caption',
+            headerDeveloper: 'DEVELOPER MODE',
             documentCaption: '',
             canBack: false
         },
@@ -77,6 +79,7 @@ define([
             this.options = this.options ? _({}).extend(this.options, options) : options;
 
             this.headerCaption      = this.options.headerCaption;
+            this.headerDeveloper    = this.txtHeaderDeveloper;
             this.documentCaption    = this.options.documentCaption;
             this.canBack            = this.options.canBack;
             this.branding           = this.options.customization;
@@ -85,6 +88,7 @@ define([
         render: function () {
             $(this.el).html(this.template({
                 headerCaption   : this.headerCaption,
+                headerDeveloper   : this.headerDeveloper,
                 documentCaption : Common.Utils.String.htmlEncode(this.documentCaption),
                 canBack         : this.canBack,
                 textBack        : this.textBack
@@ -162,7 +166,7 @@ define([
             if (!value)
                 value = '';
 
-            var dc = $('#header-documentcaption');
+            var dc = $('#header-documentcaption div');
             if (dc)
                 dc.html(Common.Utils.String.htmlEncode(value));
 
@@ -194,7 +198,7 @@ define([
             if (e.which == 3) { // right button click
                 Common.UI.Menu.Manager.hideAll();
                 var me = this,
-                    showPoint = [e.pageX, e.pageY],
+                    showPoint = [e.pageX*Common.Utils.zoom(), e.pageY*Common.Utils.zoom()],
                     menuContainer = $(this.el).find(Common.Utils.String.format('#menu-container-{0}',  this.gotoDocsMenu.id));
                 if (!this.gotoDocsMenu.rendered) {
                     // Prepare menu container
@@ -219,7 +223,41 @@ define([
             }
         },
 
+        setDeveloperMode: function(mode) {
+            $('#header-developer').toggleClass('hidden', !mode);
+        },
+
+        setCanRename: function(rename) {
+            var dc = $('#header-documentcaption div');
+            if (rename) {
+                var me = this;
+                dc.tooltip({title: me.txtRename, placement: 'cursor'});
+                dc.on('click', function(e) {
+                    (new Common.Views.RenameDialog({
+                        filename: me.documentCaption,
+                        handler: function(result, value) {
+                            if (result == 'ok' && !_.isEmpty(value.trim()) && me.documentCaption !== value.trim()) {
+                                Common.Gateway.requestRename(value);
+                            }
+                            Common.NotificationCenter.trigger('edit:complete', me);
+                        }
+                    })).show(dc.position().left-1, 20);
+                });
+            } else {
+                var tip = dc.data('bs.tooltip');
+                if (tip) {
+                    tip.options.title = '';
+                    tip.setContent();
+                }
+                dc.off('click');
+            }
+            dc.css('cursor', rename ? 'pointer' : 'default');
+            dc.toggleClass('renamed', rename);
+        },
+
         textBack: 'Go to Documents',
-        openNewTabText: 'Open in New Tab'
+        openNewTabText: 'Open in New Tab',
+        txtHeaderDeveloper: 'DEVELOPER MODE',
+        txtRename: 'Rename'
     }, Common.Views.Header || {}))
 });

@@ -90,12 +90,15 @@ define([
                     rely: true
                 }, {
                     el: items[1],
-                    rely: true
+                    height: 5
                 }, {
                     el: items[2],
-                    stretch: true
+                    rely: true
                 }, {
                     el: items[3],
+                    stretch: true
+                }, {
+                    el: items[4],
                     height: 25
                 }]
             });
@@ -146,14 +149,9 @@ define([
             var me              = this,
                 toolbarView     = SSE.getController('Toolbar').getView('Toolbar'),
                 rightMenuView   = SSE.getController('RightMenu').getView('RightMenu');
-//                statusBarView   = SSE.getController('Statusbar').getView('Statusbar');
-//
-            me._toolbar     = toolbarView.render(this.mode.isEditDiagram, this.mode.isEditMailMerge);
+
+            me._toolbar     = toolbarView.render(this.mode);
             me._rightMenu   = rightMenuView.render();
-//
-//            var value = Common.localStorage.getItem('de-hidden-status');
-//            if (value !== null && parseInt(value) == 1)
-//                statusBarView.setVisible(false);
         },
 
         setMode: function(mode, delay) {
@@ -166,6 +164,8 @@ define([
                 /** coauthoring end **/
             } else {
                 this.mode = mode;
+                if (this.vlayout && mode.isDesktopApp && !mode.isEdit)
+                    this.vlayout.items[1].el.css('display', 'block');
             }
         }
     });
